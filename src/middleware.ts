@@ -2,7 +2,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-export async function proxy(request: NextRequest) {
+// O nome da função OBRIGATORIAMENTE precisa ser "middleware"
+export async function middleware(request: NextRequest) {
   const { pathname, origin } = request.nextUrl;
 
   // Ignora rotas de sistema, painel e arquivos estáticos
