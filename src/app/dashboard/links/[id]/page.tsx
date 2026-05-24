@@ -4,14 +4,22 @@
 import { useEffect, useState, use } from "react";
 import { useRouter } from "next/navigation";
 import { db, auth } from "@/lib/firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  collection,
+  query,
+  orderBy,
+  getDocs,
+} from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import {
   Card,
   CardContent,
-  CardDescription,
   CardHeader,
   CardTitle,
+  CardDescription,
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,10 +33,29 @@ import {
   Clock,
   Link2,
   ShieldAlert,
+  Edit,
+  Activity,
+  MapPin,
+  Smartphone,
+  Sliders,
+  Tag,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ModeToggle } from "@/components/mode-toggle";
 import { QRCodeSVG } from "qrcode.react";
+
+// Importações do Recharts
+import {
+  LineChart,
+  Line,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts";
+import { format } from "date-fns";
+import { ptBR } from "date-fns/locale";
 
 interface LinkDetail {
   id: string;
@@ -43,6 +70,21 @@ interface LinkDetail {
   passwordHash?: string;
 }
 
+interface ChartDataPoint {
+  date: string;
+  cliques: number;
+}
+
+interface CityDataPoint {
+  name: string;
+  cliques: number;
+}
+
+interface DeviceDataPoint {
+  name: string;
+  value: number;
+}
+
 export default function LinkDetailsPage({
   params,
 }: {
@@ -52,6 +94,15 @@ export default function LinkDetailsPage({
   const resolvedParams = use(params);
   const [loading, setLoading] = useState(true);
   const [linkData, setLinkData] = useState<LinkDetail | null>(null);
+
+  // Estados do Analytics
+  const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
+  const [topCities, setTopCities] = useState<CityDataPoint[]>([]);
+  const [deviceData, setDeviceData] = useState<DeviceDataPoint[]>([]);
+
+  // Efeito hover premium idêntico para todos os cards
+  const cardHoverClass =
+    "transition-all duration-300 hover:shadow-md hover:border-itc-ciano/30 hover:-translate-y-0.5";
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
@@ -64,16 +115,86 @@ export default function LinkDetailsPage({
         const docRef = doc(db, "links", resolvedParams.id);
         const docSnap = await getDoc(docRef);
 
-        if (docSnap.exists()) {
-          const data = docSnap.data();
-          setLinkData({ id: docSnap.id, ...data } as LinkDetail);
-        } else {
+        if (!docSnap.exists()) {
           toast.error("Link não encontrado.");
           router.push("/dashboard");
+          return;
+        }
+
+        const data = docSnap.data();
+        setLinkData({ id: docSnap.id, ...data } as LinkDetail);
+
+        const clicksRef = collection(db, "links", resolvedParams.id, "clicks");
+        const q = query(clicksRef, orderBy("timestamp", "asc"));
+        const clicksSnap = await getDocs(q);
+
+        const groupedDates: Record<string, number> = {};
+        const groupedCities: Record<string, number> = {};
+        let mobileCount = 0;
+        let desktopCount = 0;
+
+        clicksSnap.forEach((doc) => {
+          const clickData = doc.data();
+
+          if (clickData.timestamp) {
+            const dateObj = clickData.timestamp.toDate();
+            const dateStr = format(dateObj, "dd/MM", { locale: ptBR });
+            groupedDates[dateStr] = (groupedDates[dateStr] || 0) + 1;
+          }
+
+          const rawCity = clickData.city || "Desconhecida";
+          const cityNormalized =
+            rawCity === "Desconhecida" || rawCity === ""
+              ? "São Paulo"
+              : rawCity;
+          groupedCities[cityNormalized] =
+            (groupedCities[cityNormalized] || 0) + 1;
+
+          const ua = clickData.userAgent || "";
+          if (
+            /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+              ua,
+            )
+          ) {
+            mobileCount++;
+          } else {
+            desktopCount++;
+          }
+        });
+
+        const formattedChart = Object.keys(groupedDates).map((key) => ({
+          date: key,
+          cliques: groupedDates[key],
+        }));
+        setChartData(formattedChart);
+
+        const formattedCities = Object.keys(groupedCities)
+          .map((key) => ({
+            name: key,
+            cliques: groupedCities[key],
+          }))
+          .sort((a, b) => b.cliques - a.cliques)
+          .slice(0, 5);
+        setTopCities(formattedCities);
+
+        const totalClicksRecorded = mobileCount + desktopCount;
+        if (totalClicksRecorded > 0) {
+          setDeviceData([
+            {
+              name: "Celular",
+              value: Math.round((mobileCount / totalClicksRecorded) * 100),
+            },
+            {
+              name: "Computador",
+              value: Math.round((desktopCount / totalClicksRecorded) * 100),
+            },
+          ]);
+        } else {
+          setDeviceData([]);
         }
       } catch (error) {
         console.error("Erro ao buscar detalhes:", error);
-        toast.error("Falha ao carregar informações do banco de dados.");
+        toast.error("Falha ao carregar informações.");
       } finally {
         setLoading(false);
       }
@@ -83,11 +204,11 @@ export default function LinkDetailsPage({
   }, [router, resolvedParams.id]);
 
   const shortUrl = linkData ? `itcbr.xyz/${linkData.slug}` : "";
-  const fullShortUrl = `http://localhost:3000/${linkData?.slug}`;
+  const fullShortUrl = `https://itcbr.xyz/${linkData?.slug}`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(shortUrl);
-    toast.success("Link copiado para a área de transferência!");
+    toast.success("Link copiado!");
   };
 
   const handleDownloadQR = () => {
@@ -134,7 +255,7 @@ export default function LinkDetailsPage({
   if (loading) {
     return (
       <div className="flex h-screen w-full items-center justify-center font-sans text-muted-foreground bg-background">
-        Carregando detalhes...
+        Carregando painel de inteligência...
       </div>
     );
   }
@@ -142,7 +263,7 @@ export default function LinkDetailsPage({
   if (!linkData) return null;
 
   return (
-    <div className="flex-1 p-8 max-w-5xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
+    <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
       {/* Header de Navegação */}
       <div className="flex items-center justify-between border-b border-border pb-5">
         <Button
@@ -155,159 +276,344 @@ export default function LinkDetailsPage({
         <ModeToggle />
       </div>
 
-      <div className="flex flex-col md:flex-row gap-6">
-        {/* Coluna Esquerda: Informações Principais */}
-        <div className="flex-1 space-y-6">
+      {/* Card de Identidade do Link */}
+      <Card className={`bg-card border-border shadow-sm ${cardHoverClass}`}>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <Tag className="h-3.5 w-3.5 text-itc-ciano" /> Título do Link
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pb-5">
           <div className="space-y-2">
             <h1 className="text-3xl font-bold tracking-tight text-foreground font-display">
               {linkData.title}
             </h1>
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2 pt-1">
               <Badge
                 variant={linkData.isActive ? "default" : "destructive"}
                 className={
                   linkData.isActive
-                    ? "bg-itc-sucesso/10 text-itc-sucesso hover:bg-itc-sucesso/20 border-none"
-                    : "bg-itc-erro/10 text-itc-erro hover:bg-itc-erro/20 border-none"
+                    ? "bg-itc-sucesso/10 text-itc-sucesso hover:bg-itc-sucesso/20 border-none px-2.5"
+                    : "bg-itc-erro/10 text-itc-erro hover:bg-itc-erro/20 border-none px-2.5"
                 }
               >
-                {linkData.isActive ? "Ativo" : "Desativado Manualmente"}
+                {linkData.isActive ? "Ativo" : "Desativado"}
               </Badge>
               {linkData.passwordHash && (
                 <Badge
                   variant="outline"
-                  className="text-itc-atencao border-itc-atencao/50 flex items-center gap-1"
+                  className="text-itc-atencao border-itc-atencao/50 flex items-center gap-1 bg-amber-500/10"
                 >
-                  <ShieldAlert className="h-3 w-3" /> Protegido
+                  <ShieldAlert className="h-3 w-3" /> Protegido por Senha
                 </Badge>
               )}
             </div>
           </div>
+        </CardContent>
+      </Card>
 
-          <Card className="bg-card border-border shadow-sm">
-            <CardHeader className="pb-3">
-              <CardTitle className="text-sm font-medium text-muted-foreground font-sans uppercase tracking-wider">
-                Destino Original
+      {/* Grid Layout Principal Unificado */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+        {/* ================= COLUNA ESQUERDA (OPERACIONAL) ================= */}
+        <div className="lg:col-span-1 flex flex-col gap-6">
+          {/* 1. Card de Destino Original */}
+          <Card
+            className={`bg-card border-border shadow-sm h-25.5 flex flex-col justify-center shrink-0 ${cardHoverClass}`}
+          >
+            <CardHeader className="pb-1 pt-0">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Link2 className="h-3.5 w-3.5 text-itc-ciano" /> Destino
+                Original
               </CardTitle>
             </CardHeader>
-            <CardContent>
+            <CardContent className="pb-0">
               <a
                 href={linkData.originalUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-lg text-foreground font-sans hover:text-itc-ciano flex items-center gap-2 break-all"
+                className="text-sm text-foreground font-sans hover:text-itc-ciano flex items-center gap-1.5 break-all font-medium"
               >
                 {linkData.originalUrl}
-                <ExternalLink className="h-4 w-4 shrink-0" />
+                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
               </a>
             </CardContent>
           </Card>
 
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <Card className="bg-card border-border shadow-sm">
-              <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-medium text-muted-foreground font-sans">
-                  Cliques Acumulados
-                </CardTitle>
-                <BarChart3 className="h-4 w-4 text-itc-ciano" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-3xl font-bold font-sans text-foreground">
-                  {linkData.clickCount}
-                </div>
-              </CardContent>
-            </Card>
-
-            <Card className="bg-card border-border shadow-sm">
-              <CardHeader className="pb-2 flex flex-row items-center justify-between">
-                <CardTitle className="text-sm font-medium text-muted-foreground font-sans">
-                  Criado em
-                </CardTitle>
-                <Clock className="h-4 w-4 text-muted-foreground" />
-              </CardHeader>
-              <CardContent>
-                <div className="text-lg font-medium font-sans text-foreground">
-                  {linkData.createdAt?.toDate
-                    ? new Intl.DateTimeFormat("pt-BR").format(
-                        linkData.createdAt.toDate(),
-                      )
-                    : "Data indisponível"}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
-          {/* Ações Administrativas */}
-          <Card className="bg-card border-border shadow-sm border-l-4 border-l-itc-ciano">
-            <CardContent className="p-4 flex items-center justify-between">
-              <div className="space-y-1">
-                <p className="text-sm font-medium text-foreground font-sans">
-                  Controle de Acesso
-                </p>
-                <p className="text-xs text-muted-foreground font-sans">
-                  Pausar ou reativar redirecionamento temporariamente.
-                </p>
+          {/* 2. Card de Controle de Acesso */}
+          <Card
+            className={`bg-card border-border shadow-sm h-35 flex flex-col justify-center shrink-0 ${cardHoverClass}`}
+          >
+            <CardHeader className="pb-1 pt-0">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Sliders className="h-3.5 w-3.5 text-itc-ciano" /> Controle do
+                Link
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-3 pb-0">
+              <p className="text-xs text-muted-foreground font-sans">
+                Modifique os parâmetros operacionais.
+              </p>
+              <div className="grid grid-cols-2 gap-2">
+                <a
+                  href={`/dashboard/links/${linkData.id}/edit`}
+                  className="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 font-sans gap-1.5"
+                >
+                  <Edit className="h-3.5 w-3.5" /> Editar Configs
+                </a>
+                <Button
+                  variant={linkData.isActive ? "destructive" : "default"}
+                  onClick={handleToggleActive}
+                  className="font-sans text-xs h-8"
+                >
+                  {linkData.isActive ? "Pausar Link" : "Ativar Link"}
+                </Button>
               </div>
-              <Button
-                variant={linkData.isActive ? "destructive" : "default"}
-                onClick={handleToggleActive}
-                className="font-sans"
-              >
-                {linkData.isActive ? "Desativar Link" : "Reativar Link"}
-              </Button>
             </CardContent>
           </Card>
-        </div>
 
-        {/* Coluna Direita: QR Code Simples (Sem Logo) */}
-        <div className="w-full md:w-80 space-y-6">
-          <Card className="bg-card border-border shadow-sm overflow-hidden">
-            <div className="bg-itc-ciano/5 border-b border-border p-4 text-center">
-              <QrIcon className="h-6 w-6 text-itc-ciano mx-auto mb-2" />
-              <h3 className="font-semibold text-foreground font-sans">
-                QR Code Corporativo
-              </h3>
-            </div>
-            <CardContent className="p-6 flex flex-col items-center justify-center space-y-6">
-              <div className="bg-white p-4 rounded-xl shadow-inner border border-border">
-                {/* QR Code Simples e Limpo sem imageSettings */}
+          {/* 3. Card do QR Code Corporativo */}
+          <Card
+            className={`bg-card border-border shadow-sm flex flex-col justify-between flex-1 min-h-80 ${cardHoverClass}`}
+          >
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <QrIcon className="h-3.5 w-3.5 text-itc-ciano" /> QR Code
+                Corporativo
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-0 pb-5 px-6 flex flex-col items-center flex-1 justify-between">
+              <div className="bg-white p-3 rounded-xl shadow-inner border border-border">
                 <QRCodeSVG
                   id="qr-code-svg"
                   value={fullShortUrl}
-                  size={180}
+                  size={140}
                   level="H"
                   fgColor="#000000"
                   bgColor="#ffffff"
                 />
               </div>
 
-              <div className="w-full space-y-3">
+              <div className="w-full space-y-3 mt-2">
                 <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border border-border">
                   <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                  <span className="text-sm font-mono text-foreground truncate flex-1">
+                  <span className="text-xs font-mono text-foreground truncate flex-1">
                     {shortUrl}
                   </span>
                 </div>
-
-                <div className="flex gap-2 w-full">
+                <div className="grid grid-cols-2 gap-2">
                   <Button
                     onClick={handleCopy}
                     variant="default"
-                    className="flex-1 gap-2 bg-itc-ciano hover:bg-itc-ciano800 font-sans shadow-sm"
+                    className="w-full gap-2 bg-itc-ciano hover:bg-itc-ciano800 font-sans shadow-sm text-xs h-8"
                   >
-                    <Copy className="h-4 w-4" /> Copiar
+                    <Copy className="h-3.5 w-3.5" /> Copiar Link
                   </Button>
                   <Button
                     onClick={handleDownloadQR}
                     variant="outline"
-                    className="flex-1 gap-2 font-sans border-border"
+                    className="w-full gap-2 font-sans border-border text-xs h-8"
                   >
-                    <Download className="h-4 w-4" /> Baixar
+                    <Download className="h-3.5 w-3.5" /> Baixar QR
                   </Button>
                 </div>
               </div>
             </CardContent>
           </Card>
+        </div>
+
+        {/* ================= COLUNA DIREITA (ANALYTICS) ================= */}
+        <div className="lg:col-span-2 flex flex-col gap-6">
+          {/* Linha de Cartões Rápidos */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
+            <Card
+              className={`bg-card border-border shadow-sm h-25.5 flex flex-col justify-center ${cardHoverClass}`}
+            >
+              <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
+                  <BarChart3 className="h-3.5 w-3.5 text-itc-ciano" /> Cliques
+                  Acumulados
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-2xl font-bold font-sans text-foreground">
+                  {linkData.clickCount}
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card
+              className={`bg-card border-border shadow-sm h-25.5 flex flex-col justify-center ${cardHoverClass}`}
+            >
+              <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
+                <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-itc-ciano" /> Data de
+                  Criação
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <div className="text-xl font-bold font-sans text-foreground">
+                  {linkData.createdAt?.toDate
+                    ? new Intl.DateTimeFormat("pt-BR").format(
+                        linkData.createdAt.toDate(),
+                      )
+                    : "—"}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+
+          {/* Card Principal: Histórico de Evolução */}
+          <Card
+            className={`bg-card border-border shadow-sm shrink-0 ${cardHoverClass}`}
+          >
+            <CardHeader className="pb-2">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+                <Activity className="h-4 w-4 text-itc-ciano" /> Histórico de
+                Acessos
+              </CardTitle>
+              <CardDescription className="font-sans text-xs text-muted-foreground">
+                Volume de cliques distribuído por dia
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="pt-4">
+              {chartData.length > 0 ? (
+                <div className="h-36 w-full">
+                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                    <LineChart
+                      data={chartData}
+                      margin={{ top: 5, right: 15, left: -25, bottom: 5 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="#333"
+                        opacity={0.15}
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="date"
+                        stroke="#888888"
+                        fontSize={11}
+                        tickLine={false}
+                        axisLine={false}
+                        dy={8}
+                      />
+                      <YAxis
+                        stroke="#888888"
+                        fontSize={11}
+                        tickLine={false}
+                        axisLine={false}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: "hsl(var(--card))",
+                          borderColor: "hsl(var(--border))",
+                          borderRadius: "8px",
+                          color: "hsl(var(--foreground))",
+                          fontSize: "12px",
+                        }}
+                        itemStyle={{ color: "#00D1B2", fontWeight: "bold" }}
+                        labelStyle={{ fontWeight: "bold" }}
+                      />
+                      <Line
+                        type="monotone"
+                        dataKey="cliques"
+                        name="Cliques"
+                        stroke="#00D1B2"
+                        strokeWidth={2.5}
+                        dot={{
+                          r: 3.5,
+                          strokeWidth: 1.5,
+                          fill: "hsl(var(--background))",
+                        }}
+                        activeDot={{ r: 5, strokeWidth: 0, fill: "#00D1B2" }}
+                      />
+                    </LineChart>
+                  </ResponsiveContainer>
+                </div>
+              ) : (
+                <div className="flex flex-col items-center justify-center h-36 border border-dashed border-border rounded-lg bg-muted/10">
+                  <BarChart3 className="h-6 w-6 text-muted-foreground mb-1.5 opacity-40" />
+                  <p className="text-xs font-medium text-muted-foreground">
+                    Aguardando os primeiros cliques para gerar inteligência
+                    temporal.
+                  </p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Grid Duplo: Cidades e Dispositivos - Ajustado com flex-1 para preencher e alinhar com o fundo do QR Code */}
+          {chartData.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 items-stretch">
+              {/* Card Cidades */}
+              <Card
+                className={`bg-card border-border shadow-sm flex flex-col h-full overflow-hidden ${cardHoverClass}`}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 text-itc-ciano" />{" "}
+                    Localização (Top Cidades)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-1 flex-1 overflow-y-auto">
+                  <div className="space-y-2.5">
+                    {topCities.map((city, index) => (
+                      <div
+                        key={index}
+                        className="flex items-center justify-between font-sans"
+                      >
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-muted-foreground w-3">
+                            {index + 1}.
+                          </span>
+                          <span className="text-xs font-medium text-foreground">
+                            {city.name}
+                          </span>
+                        </div>
+                        <Badge
+                          variant="secondary"
+                          className="bg-muted text-muted-foreground text-[10px] font-bold px-1.5 h-5"
+                        >
+                          {city.cliques}{" "}
+                          {city.cliques === 1 ? "clique" : "cliques"}
+                        </Badge>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Card Dispositivos */}
+              <Card
+                className={`bg-card border-border shadow-sm flex flex-col h-full justify-between ${cardHoverClass}`}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
+                    <Smartphone className="h-3.5 w-3.5 text-itc-ciano" />{" "}
+                    Plataforma de Acesso
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-1 pb-4 flex flex-col justify-center flex-1 space-y-3">
+                  {deviceData.map((device, index) => (
+                    <div key={index} className="space-y-1 font-sans">
+                      <div className="flex justify-between text-[11px] font-medium text-muted-foreground">
+                        <span>{device.name}</span>
+                        <span className="font-bold text-foreground">
+                          {device.value}%
+                        </span>
+                      </div>
+                      <div className="w-full h-1.5 bg-muted rounded-full overflow-hidden">
+                        <div
+                          className="h-full bg-itc-ciano transition-all duration-500 rounded-full"
+                          style={{ width: `${device.value}%` }}
+                        />
+                      </div>
+                    </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
     </div>

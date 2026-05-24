@@ -49,6 +49,7 @@ import {
   QrCode,
   ArrowUpDown,
   Trash2,
+  Users,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ModeToggle } from "@/components/mode-toggle";
@@ -374,6 +375,14 @@ export default function DashboardPage() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-border" />
+
+              <DropdownMenuItem
+                onClick={() => router.push("/dashboard/users")}
+                className="cursor-pointer flex items-center gap-2 font-sans font-medium"
+              >
+                <Users className="h-4 w-4" /> Gestão de Equipe
+              </DropdownMenuItem>
+
               <DropdownMenuItem
                 onClick={handleLogout}
                 className="text-itc-erro focus:text-itc-erro focus:bg-itc-erro/10 cursor-pointer flex items-center gap-2 font-sans font-medium"

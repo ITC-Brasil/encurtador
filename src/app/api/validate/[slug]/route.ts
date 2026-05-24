@@ -9,6 +9,7 @@ import {
   updateDoc,
   doc,
   increment,
+  addDoc,
 } from "firebase/firestore";
 
 export async function GET(
@@ -18,7 +19,13 @@ export async function GET(
   try {
     const { slug } = await params;
 
-    // Busca o link no Firestore pelo slug (RF-01.4)
+    // 1. Captura de Metadados da Vercel Edge
+    const country =
+      request.headers.get("x-vercel-ip-country") || "Desconhecido";
+    const city = request.headers.get("x-vercel-ip-city") || "Desconhecida";
+    const userAgent = request.headers.get("user-agent") || "Desconhecido";
+
+    // 2. Busca o link no banco
     const linksRef = collection(db, "links");
     const q = query(linksRef, where("slug", "==", slug));
     const snapshot = await getDocs(q);
@@ -31,34 +38,49 @@ export async function GET(
     const data = linkDoc.data();
     const linkId = linkDoc.id;
 
-    // Regra 1: Inativo manualmente
+    // 3. Regra 1: Desativação Manual (RF-03.1)
     if (!data.isActive) {
-      return NextResponse.json({ status: "expired" }, { status: 200 });
+      return NextResponse.json({ status: "expired" }, { status: 410 });
     }
 
-    // Regra 2: Expiração por Data (RF-03.1)
+    // 4. Regra 2: Expiração por Data (RF-03.2)
     if (data.expiresAt) {
+      const now = new Date();
       const expirationDate = data.expiresAt.toDate();
-      if (new Date() > expirationDate) {
-        return NextResponse.json({ status: "expired" }, { status: 200 });
+      if (now > expirationDate) {
+        return NextResponse.json({ status: "expired" }, { status: 410 });
       }
     }
 
-    // Regra 3: Expiração por Limite de Cliques (RF-03.2)
-    if (data.maxClicks !== null && data.clickCount >= data.maxClicks) {
-      return NextResponse.json({ status: "expired" }, { status: 200 });
+    // 5. Regra 3: Limite de Cliques (RF-03.3)
+    if (data.maxClicks && data.maxClicks > 0) {
+      if (data.clickCount >= data.maxClicks) {
+        return NextResponse.json({ status: "expired" }, { status: 410 });
+      }
     }
 
-    // Regra 4: Proteção por Senha (RF-04.1)
+    // 6. Regra 4: Proteção por Senha (RF-04.1)
     if (data.passwordHash) {
       return NextResponse.json({ status: "protected" }, { status: 200 });
     }
 
-    // Sucesso: Se passou por tudo, o link é válido!
-    // Aqui incrementamos o contador de cliques assincronamente para não atrasar o redirecionamento
-    updateDoc(doc(db, "links", linkId), {
+    // 7. Sucesso: Registra o Clique e os Metadados simultaneamente
+    const updateCountPromise = updateDoc(doc(db, "links", linkId), {
       clickCount: increment(1),
-    }).catch((err) => console.error("Erro ao incrementar clique:", err));
+    });
+
+    const registerMetadataPromise = addDoc(
+      collection(db, "links", linkId, "clicks"),
+      {
+        timestamp: new Date(),
+        country,
+        city,
+        userAgent,
+      },
+    );
+
+    // Executa as duas operações no banco em paralelo para não gerar lentidão
+    await Promise.all([updateCountPromise, registerMetadataPromise]);
 
     return NextResponse.json(
       {
