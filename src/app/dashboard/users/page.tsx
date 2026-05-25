@@ -14,7 +14,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -26,7 +25,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -43,14 +41,12 @@ import {
   ArrowLeft,
   UserPlus,
   Trash2,
-  ShieldCheck,
-  Mail,
-  User,
   Play,
   AlertTriangle,
   ArrowUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
+import { InviteMemberForm } from "@/components/invite-member-form";
 
 interface Colaborador {
   uid: string;
@@ -66,38 +62,29 @@ type OrderDirection = "asc" | "desc" | null;
 export default function GestaoUsuariosPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
-  const [isSubmitting, setIsSubmitting] = useState(false);
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   const [currentAdminEmail, setCurrentAdminEmail] = useState<string | null>(
     null,
   );
 
-  // Estados de ordenação estilo Data Table originais
   const [sortRole, setSortRole] = useState<OrderDirection>(null);
   const [sortStatus, setSortStatus] = useState<OrderDirection>(null);
-
-  const [newUserData, setNewUserData] = useState({
-    name: "",
-    email: "",
-    role: "Colaborador",
-  });
 
   const cardHoverClass =
     "transition-all duration-300 hover:shadow-md hover:border-itc-ciano/30";
 
-  // Busca colaboradores injetando a proteção por Token Bearer JWT
   const fetchColaboradores = async () => {
     try {
       const currentUser = auth.currentUser;
       if (!currentUser) return;
 
-      const token = await currentUser.getIdToken(); // <-- Obtém o Token
+      const token = await currentUser.getIdToken();
 
       const res = await fetch("/api/usuarios", {
         method: "GET",
         headers: {
-          Authorization: `Bearer ${token}`, // <-- Envia na requisição
+          Authorization: `Bearer ${token}`,
         },
       });
 
@@ -123,7 +110,6 @@ export default function GestaoUsuariosPage() {
     return () => unsubscribe();
   }, [router]);
 
-  // CONTROLE DE ORDENAÇÃO DO DATA TABLE ORIGINAL
   const toggleSortRole = () => {
     const nextDirection: OrderDirection =
       sortRole === "asc" ? "desc" : sortRole === "desc" ? null : "asc";
@@ -171,13 +157,13 @@ export default function GestaoUsuariosPage() {
     newRole: "Administrador" | "Colaborador",
   ) => {
     try {
-      const token = await auth.currentUser?.getIdToken(); // <-- Obtém o Token
+      const token = await auth.currentUser?.getIdToken();
 
       const res = await fetch("/api/usuarios", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // <-- Autentica a chamada
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ uid, role: newRole }),
       });
@@ -186,7 +172,7 @@ export default function GestaoUsuariosPage() {
         throw new Error(data.error || "Erro ao alterar permissão.");
       }
 
-      toast.success("Permissão atualizada com sucesso!"); // Quick win: traduzido
+      toast.success("Permissão atualizada com sucesso!");
       fetchColaboradores();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro ao alterar nível";
@@ -204,13 +190,13 @@ export default function GestaoUsuariosPage() {
         ? "Ativo"
         : "Suspenso";
     try {
-      const token = await auth.currentUser?.getIdToken(); // <-- Obtém o Token
+      const token = await auth.currentUser?.getIdToken();
 
       const res = await fetch("/api/usuarios", {
         method: "PUT",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // <-- Autentica a chamada
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({ uid, status: nextStatus }),
       });
@@ -240,12 +226,12 @@ export default function GestaoUsuariosPage() {
       return;
 
     try {
-      const token = await auth.currentUser?.getIdToken(); // <-- Obtém o Token
+      const token = await auth.currentUser?.getIdToken();
 
       const res = await fetch(`/api/usuarios?uid=${uid}`, {
         method: "DELETE",
         headers: {
-          Authorization: `Bearer ${token}`, // <-- Autentica a chamada
+          Authorization: `Bearer ${token}`,
         },
       });
       if (!res.ok) {
@@ -258,40 +244,6 @@ export default function GestaoUsuariosPage() {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro na exclusão";
       toast.error(msg);
-    }
-  };
-
-  const handleCreateColaborador = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setIsSubmitting(true);
-    try {
-      const randomPassword =
-        Math.random().toString(36).substring(2) + "ITC@2026!";
-      const token = await auth.currentUser?.getIdToken(); // <-- Obtém o Token
-
-      const res = await fetch("/api/usuarios", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`, // <-- Autentica a chamada
-        },
-        body: JSON.stringify({ ...newUserData, password: randomPassword }),
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Erro ao registrar usuário.");
-
-      toast.success("Colaborador cadastrado via Google Auth!");
-      setIsDialogOpen(false);
-      setNewUserData({ name: "", email: "", role: "Colaborador" });
-      fetchColaboradores();
-    } catch (error: unknown) {
-      if (error instanceof Error) {
-        toast.error(error.message);
-      } else {
-        toast.error("Erro no cadastro.");
-      }
-    } finally {
-      setIsSubmitting(false);
     }
   };
 
@@ -320,98 +272,32 @@ export default function GestaoUsuariosPage() {
               Equipe ITC Brasil
             </CardTitle>
             <CardDescription className="text-xs text-muted-foreground font-sans">
-              Gerencie acessos temporários ou remova usuários permanentemente do
-              ecossistema.
+              Gerencie acessos operacionais ou envie tokens de convite
+              exclusivos para novos integrantes.
             </CardDescription>
           </div>
 
           <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
               <Button className="bg-itc-ciano hover:bg-itc-ciano800 text-white font-sans text-xs font-medium gap-2 h-9 shadow-sm">
-                <UserPlus className="h-4 w-4" /> Novo Colaborador
+                <UserPlus className="h-4 w-4" /> Convidar Integrante
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-md bg-card border-border font-sans">
-              <form onSubmit={handleCreateColaborador}>
-                <DialogHeader>
-                  <DialogTitle className="text-lg font-bold font-sans">
-                    Adicionar Colaborador
-                  </DialogTitle>
-                  <DialogDescription className="text-xs text-muted-foreground font-sans">
-                    Os colaboradores adicionados realizarão a autenticação de
-                    forma direta e segura através do Google.
-                  </DialogDescription>
-                </DialogHeader>
-                <div className="space-y-4 py-4">
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 font-sans">
-                      <User className="h-3.5 w-3.5 text-itc-ciano" /> Nome
-                      Completo
-                    </span>
-                    <Input
-                      required
-                      value={newUserData.name}
-                      onChange={(e) =>
-                        setNewUserData({ ...newUserData, name: e.target.value })
-                      }
-                      placeholder="Ex: João Silva"
-                      className="h-9 text-sm font-sans"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 font-sans">
-                      <Mail className="h-3.5 w-3.5 text-itc-ciano" /> E-mail
-                      Corporativo
-                    </span>
-                    <Input
-                      type="email"
-                      required
-                      value={newUserData.email}
-                      onChange={(e) =>
-                        setNewUserData({
-                          ...newUserData,
-                          email: e.target.value,
-                        })
-                      }
-                      placeholder="nome@grupoitcbrasil.com.br"
-                      className="h-9 text-sm font-sans"
-                    />
-                  </div>
-                  <div className="space-y-1.5">
-                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 font-sans">
-                      <ShieldCheck className="h-3.5 w-3.5 text-itc-ciano" />{" "}
-                      Nível de Permissão
-                    </span>
-                    <Select
-                      value={newUserData.role}
-                      onValueChange={(val) =>
-                        setNewUserData({ ...newUserData, role: val })
-                      }
-                    >
-                      <SelectTrigger className="h-9 text-sm font-sans">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-card border-border font-sans">
-                        <SelectItem value="Colaborador">Colaborador</SelectItem>
-                        <SelectItem value="Administrador">
-                          Administrador
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                <DialogFooter>
-                  <Button
-                    type="submit"
-                    disabled={isSubmitting}
-                    className="w-full bg-itc-ciano hover:bg-itc-ciano800 h-9 text-xs font-sans"
-                  >
-                    {isSubmitting
-                      ? "Cadastrando..."
-                      : "Confirmar Cadastro Corporativo"}
-                  </Button>
-                </DialogFooter>
-              </form>
+            <DialogContent className="sm:max-w-md bg-card border-border font-sans text-foreground">
+              <DialogHeader>
+                <DialogTitle className="text-lg font-bold font-sans">
+                  Convidar Colaborador
+                </DialogTitle>
+                <DialogDescription className="text-xs text-muted-foreground font-sans">
+                  Gere um link seguro de autorização. O destinatário usará esse
+                  token para vincular seu Google Auth.
+                </DialogDescription>
+              </DialogHeader>
+
+              <InviteMemberForm
+                onSuccess={() => fetchColaboradores()}
+                onCancel={() => setIsDialogOpen(false)}
+              />
             </DialogContent>
           </Dialog>
         </CardHeader>
@@ -419,7 +305,7 @@ export default function GestaoUsuariosPage() {
         <CardContent className="p-0 border-t border-border">
           <Table>
             <TableHeader className="bg-muted/20">
-              <TableRow className="border-b border-border">
+              <TableRow className="border-b border-border hover:bg-transparent">
                 <TableHead className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans">
                   Colaborador
                 </TableHead>
@@ -445,7 +331,6 @@ export default function GestaoUsuariosPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {/* ERROS RESOLVIDOS: Mapeamento direto do array do estado, tipando explicitamente a variável 'colab' */}
               {colaboradores.map((colab: Colaborador) => (
                 <TableRow
                   key={colab.uid}
@@ -470,10 +355,10 @@ export default function GestaoUsuariosPage() {
                         handleRoleChange(colab.uid, val)
                       }
                     >
-                      <SelectTrigger className="w-36 border-border text-xs h-8 bg-background font-sans">
+                      <SelectTrigger className="w-36 border-border text-xs h-8 bg-background font-sans text-foreground">
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent className="bg-card border-border font-sans">
+                      <SelectContent className="bg-card border-border font-sans text-foreground">
                         <SelectItem
                           value="Administrador"
                           className="text-xs font-semibold"
