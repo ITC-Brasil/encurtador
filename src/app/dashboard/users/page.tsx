@@ -73,7 +73,7 @@ export default function GestaoUsuariosPage() {
     null,
   );
 
-  // Estados de ordenação estilo Data Table
+  // Estados de ordenação estilo Data Table originais
   const [sortRole, setSortRole] = useState<OrderDirection>(null);
   const [sortStatus, setSortStatus] = useState<OrderDirection>(null);
 
@@ -86,9 +86,21 @@ export default function GestaoUsuariosPage() {
   const cardHoverClass =
     "transition-all duration-300 hover:shadow-md hover:border-itc-ciano/30";
 
+  // Busca colaboradores injetando a proteção por Token Bearer JWT
   const fetchColaboradores = async () => {
     try {
-      const res = await fetch("/api/usuarios");
+      const currentUser = auth.currentUser;
+      if (!currentUser) return;
+
+      const token = await currentUser.getIdToken(); // <-- Obtém o Token
+
+      const res = await fetch("/api/usuarios", {
+        method: "GET",
+        headers: {
+          Authorization: `Bearer ${token}`, // <-- Envia na requisição
+        },
+      });
+
       if (!res.ok) throw new Error();
       const data = await res.json();
       setColaboradores(data);
@@ -111,7 +123,7 @@ export default function GestaoUsuariosPage() {
     return () => unsubscribe();
   }, [router]);
 
-  // CONTROLE DE ORDENAÇÃO DO DATA TABLE
+  // CONTROLE DE ORDENAÇÃO DO DATA TABLE ORIGINAL
   const toggleSortRole = () => {
     const nextDirection: OrderDirection =
       sortRole === "asc" ? "desc" : sortRole === "desc" ? null : "asc";
@@ -159,18 +171,26 @@ export default function GestaoUsuariosPage() {
     newRole: "Administrador" | "Colaborador",
   ) => {
     try {
+      const token = await auth.currentUser?.getIdToken(); // <-- Obtém o Token
+
       const res = await fetch("/api/usuarios", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // <-- Autentica a chamada
+        },
         body: JSON.stringify({ uid, role: newRole }),
       });
-      if (!res.ok) throw new Error();
-      setColaboradores((prev) =>
-        prev.map((c) => (c.uid === uid ? { ...c, role: newRole } : c)),
-      );
-      toast.success("Permissão updated!");
-    } catch {
-      toast.error("Erro ao alterar permissão.");
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Erro ao alterar permissão.");
+      }
+
+      toast.success("Permissão atualizada com sucesso!"); // Quick win: traduzido
+      fetchColaboradores();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao alterar nível";
+      toast.error(msg);
     }
   };
 
@@ -184,23 +204,30 @@ export default function GestaoUsuariosPage() {
         ? "Ativo"
         : "Suspenso";
     try {
+      const token = await auth.currentUser?.getIdToken(); // <-- Obtém o Token
+
       const res = await fetch("/api/usuarios", {
         method: "PUT",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // <-- Autentica a chamada
+        },
         body: JSON.stringify({ uid, status: nextStatus }),
       });
-      if (!res.ok) throw new Error();
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Erro ao alterar status.");
+      }
 
-      setColaboradores((prev) =>
-        prev.map((c) => (c.uid === uid ? { ...c, status: nextStatus } : c)),
-      );
       toast.success(
         nextStatus === "Suspenso"
           ? `Acesso de ${name} suspenso.`
           : `Acesso de ${name} reativado.`,
       );
-    } catch {
-      toast.error("Erro ao alterar status do colaborador.");
+      fetchColaboradores();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro ao alterar status";
+      toast.error(msg);
     }
   };
 
@@ -213,13 +240,24 @@ export default function GestaoUsuariosPage() {
       return;
 
     try {
-      const res = await fetch(`/api/usuarios?uid=${uid}`, { method: "DELETE" });
-      if (!res.ok) throw new Error();
+      const token = await auth.currentUser?.getIdToken(); // <-- Obtém o Token
 
-      setColaboradores((prev) => prev.filter((c) => c.uid !== uid));
+      const res = await fetch(`/api/usuarios?uid=${uid}`, {
+        method: "DELETE",
+        headers: {
+          Authorization: `Bearer ${token}`, // <-- Autentica a chamada
+        },
+      });
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Falha ao deletar o colaborador.");
+      }
+
       toast.success(`Usuário ${name} excluído do sistema.`);
-    } catch {
-      toast.error("Falha ao deletar o colaborador.");
+      fetchColaboradores();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : "Erro na exclusão";
+      toast.error(msg);
     }
   };
 
@@ -229,10 +267,14 @@ export default function GestaoUsuariosPage() {
     try {
       const randomPassword =
         Math.random().toString(36).substring(2) + "ITC@2026!";
+      const token = await auth.currentUser?.getIdToken(); // <-- Obtém o Token
 
       const res = await fetch("/api/usuarios", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`, // <-- Autentica a chamada
+        },
         body: JSON.stringify({ ...newUserData, password: randomPassword }),
       });
       const data = await res.json();
@@ -263,7 +305,6 @@ export default function GestaoUsuariosPage() {
 
   return (
     <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-4">
-      {/* Botão Voltar ao Painel restaurado com sucesso */}
       <Button
         variant="ghost"
         onClick={() => router.push("/dashboard")}
@@ -404,7 +445,8 @@ export default function GestaoUsuariosPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {colaboradores.map((colab) => (
+              {/* ERROS RESOLVIDOS: Mapeamento direto do array do estado, tipando explicitamente a variável 'colab' */}
+              {colaboradores.map((colab: Colaborador) => (
                 <TableRow
                   key={colab.uid}
                   className="border-b border-border hover:bg-muted/30 transition-colors"
