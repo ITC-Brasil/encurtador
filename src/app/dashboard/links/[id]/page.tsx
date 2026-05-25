@@ -25,6 +25,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
+import {
   ArrowLeft,
   Copy,
   Download,
@@ -42,10 +50,9 @@ import {
   Tag,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ModeToggle } from "@/components/mode-toggle";
 import { QRCodeSVG } from "qrcode.react";
 
-// Importações do Recharts
+// Importações do Recharts e Componentes Customizados
 import {
   LineChart,
   Line,
@@ -57,6 +64,7 @@ import {
 } from "recharts";
 import { format } from "date-fns";
 import { ptBR } from "date-fns/locale";
+import { EditLinkForm } from "@/components/edit-link-form";
 
 interface LinkDetail {
   id: string;
@@ -65,8 +73,8 @@ interface LinkDetail {
   title: string;
   clickCount: number;
   isActive: boolean;
-  createdAt: Timestamp; // Correção ESLint: Tipagem oficial ao invés de 'any'
-  expiresAt?: Timestamp; // Correção ESLint: Tipagem oficial ao invés de 'any'
+  createdAt: Timestamp;
+  expiresAt?: Timestamp;
   maxClicks?: number;
   passwordHash?: string;
 }
@@ -96,7 +104,8 @@ export default function LinkDetailsPage({
   const [loading, setLoading] = useState(true);
   const [linkData, setLinkData] = useState<LinkDetail | null>(null);
 
-  // Estados do Analytics
+  // Estados dos Modais e Analytics
+  const [isEditOpen, setIsEditOpen] = useState(false);
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [topCities, setTopCities] = useState<CityDataPoint[]>([]);
   const [deviceData, setDeviceData] = useState<DeviceDataPoint[]>([]);
@@ -143,13 +152,16 @@ export default function LinkDetailsPage({
             groupedDates[dateStr] = (groupedDates[dateStr] || 0) + 1;
           }
 
-          const rawCity = clickData.city || "Desconhecida";
-          const cityNormalized =
-            rawCity === "Desconhecida" || rawCity === ""
-              ? "São Paulo"
-              : rawCity;
-          groupedCities[cityNormalized] =
-            (groupedCities[cityNormalized] || 0) + 1;
+          let rawCity = "Não identificada";
+          try {
+            rawCity = clickData.city
+              ? decodeURIComponent(clickData.city)
+              : "Não identificada";
+          } catch {
+            rawCity = clickData.city || "Não identificada";
+          }
+
+          groupedCities[rawCity] = (groupedCities[rawCity] || 0) + 1;
 
           const ua = clickData.userAgent || "";
           if (
@@ -249,7 +261,6 @@ export default function LinkDetailsPage({
         `O link foi ${newState ? "ativado" : "desativado"} com sucesso.`,
       );
     } catch {
-      // Correção ESLint: Variável 'error' removida pois não era utilizada aqui
       toast.error("Erro ao alterar o status do link.");
     }
   };
@@ -265,18 +276,14 @@ export default function LinkDetailsPage({
   if (!linkData) return null;
 
   return (
-    <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
-      {/* Header de Navegação */}
-      <div className="flex items-center justify-between border-b border-border pb-5">
-        <Button
-          variant="ghost"
-          onClick={() => router.push("/dashboard")}
-          className="text-muted-foreground hover:text-foreground gap-2 pl-0 hover:bg-transparent font-sans"
-        >
-          <ArrowLeft className="h-4 w-4" /> Voltar ao Painel
-        </Button>
-        <ModeToggle />
-      </div>
+    <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-4">
+      <Button
+        variant="ghost"
+        onClick={() => router.push("/dashboard")}
+        className="text-muted-foreground gap-2 pl-0 hover:bg-transparent font-sans text-xs w-max mb-2"
+      >
+        <ArrowLeft className="h-4 w-4" /> Voltar ao Painel
+      </Button>
 
       {/* Card de Identidade do Link */}
       <Card className={`bg-card border-border shadow-sm ${cardHoverClass}`}>
@@ -318,7 +325,6 @@ export default function LinkDetailsPage({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         {/* ================= COLUNA ESQUERDA (OPERACIONAL) ================= */}
         <div className="lg:col-span-1 flex flex-col gap-6">
-          {/* 1. Card de Destino Original */}
           <Card
             className={`bg-card border-border shadow-sm h-25.5 flex flex-col justify-center shrink-0 ${cardHoverClass}`}
           >
@@ -341,7 +347,6 @@ export default function LinkDetailsPage({
             </CardContent>
           </Card>
 
-          {/* 2. Card de Controle de Acesso */}
           <Card
             className={`bg-card border-border shadow-sm h-35 flex flex-col justify-center shrink-0 ${cardHoverClass}`}
           >
@@ -356,12 +361,38 @@ export default function LinkDetailsPage({
                 Modifique os parâmetros operacionais.
               </p>
               <div className="grid grid-cols-2 gap-2">
-                <a
-                  href={`/dashboard/links/${linkData.id}/edit`}
-                  className="inline-flex items-center justify-center rounded-md text-xs font-medium transition-colors border border-input bg-background shadow-sm hover:bg-accent hover:text-accent-foreground h-8 px-3 font-sans gap-1.5"
-                >
-                  <Edit className="h-3.5 w-3.5" /> Editar Configs
-                </a>
+                {/* AQUI ESTÁ A ÚNICA MUDANÇA: O DIALOG ENVOLVENDO O BOTÃO */}
+                <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
+                  <DialogTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="w-full gap-2 font-sans border-border text-xs h-8"
+                    >
+                      <Edit className="h-3.5 w-3.5" /> Editar Configs
+                    </Button>
+                  </DialogTrigger>
+                  <DialogContent className="sm:max-w-md bg-card border-border">
+                    <DialogHeader>
+                      <DialogTitle className="text-xl font-bold font-display">
+                        Editar Configurações
+                      </DialogTitle>
+                      <DialogDescription className="font-sans text-muted-foreground text-sm">
+                        Altere o destino ou identificação. O QR Code atual
+                        continuará funcionando.
+                      </DialogDescription>
+                    </DialogHeader>
+                    {/* Renderização Limpa do Componente */}
+                    <EditLinkForm
+                      linkId={resolvedParams.id}
+                      onSuccess={() => {
+                        setIsEditOpen(false);
+                        window.location.reload(); // Recarrega a página para atualizar o Título/URL na hora
+                      }}
+                      onCancel={() => setIsEditOpen(false)}
+                    />
+                  </DialogContent>
+                </Dialog>
+
                 <Button
                   variant={linkData.isActive ? "destructive" : "default"}
                   onClick={handleToggleActive}
@@ -373,7 +404,6 @@ export default function LinkDetailsPage({
             </CardContent>
           </Card>
 
-          {/* 3. Card do QR Code Corporativo */}
           <Card
             className={`bg-card border-border shadow-sm flex flex-col justify-between flex-1 min-h-80 ${cardHoverClass}`}
           >
@@ -425,7 +455,6 @@ export default function LinkDetailsPage({
 
         {/* ================= COLUNA DIREITA (ANALYTICS) ================= */}
         <div className="lg:col-span-2 flex flex-col gap-6">
-          {/* Linha de Cartões Rápidos */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
             <Card
               className={`bg-card border-border shadow-sm h-25.5 flex flex-col justify-center ${cardHoverClass}`}
@@ -464,7 +493,6 @@ export default function LinkDetailsPage({
             </Card>
           </div>
 
-          {/* Card Principal: Histórico de Evolução */}
           <Card
             className={`bg-card border-border shadow-sm shrink-0 ${cardHoverClass}`}
           >
@@ -479,7 +507,6 @@ export default function LinkDetailsPage({
             </CardHeader>
             <CardContent className="pt-4">
               {chartData.length > 0 ? (
-                // Correção do aviso do Recharts: h-[160px] e minHeight adicionados
                 <div className="h-40 w-full">
                   <ResponsiveContainer
                     width="100%"
@@ -550,10 +577,8 @@ export default function LinkDetailsPage({
             </CardContent>
           </Card>
 
-          {/* Grid Duplo: Cidades e Dispositivos */}
           {chartData.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 items-stretch">
-              {/* Card Cidades */}
               <Card
                 className={`bg-card border-border shadow-sm flex flex-col h-full overflow-hidden ${cardHoverClass}`}
               >
@@ -591,7 +616,6 @@ export default function LinkDetailsPage({
                 </CardContent>
               </Card>
 
-              {/* Card Dispositivos */}
               <Card
                 className={`bg-card border-border shadow-sm flex flex-col h-full justify-between ${cardHoverClass}`}
               >

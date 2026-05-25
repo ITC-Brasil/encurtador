@@ -51,7 +51,6 @@ import {
   ArrowUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ModeToggle } from "@/components/mode-toggle";
 
 interface Colaborador {
   uid: string;
@@ -263,25 +262,15 @@ export default function GestaoUsuariosPage() {
   }
 
   return (
-    <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
-      <div className="flex flex-col gap-2 border-b border-border pb-5">
-        <Button
-          variant="ghost"
-          onClick={() => router.push("/dashboard")}
-          className="text-muted-foreground gap-2 pl-0 hover:bg-transparent font-sans text-xs w-max"
-        >
-          <ArrowLeft className="h-4 w-4" /> Voltar ao Painel
-        </Button>
-        <div className="flex items-center justify-between w-full">
-          <div className="flex items-center gap-3">
-            <ShieldCheck className="h-6 w-5 text-itc-ciano" />
-            <h1 className="text-2xl font-bold tracking-tight text-foreground font-sans">
-              Gestão de Acessos
-            </h1>
-          </div>
-          <ModeToggle />
-        </div>
-      </div>
+    <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-4">
+      {/* Botão Voltar ao Painel restaurado com sucesso */}
+      <Button
+        variant="ghost"
+        onClick={() => router.push("/dashboard")}
+        className="text-muted-foreground gap-2 pl-0 hover:bg-transparent font-sans text-xs w-max mb-2"
+      >
+        <ArrowLeft className="h-4 w-4" /> Voltar ao Painel
+      </Button>
 
       <Card className={`bg-card border-border shadow-sm ${cardHoverClass}`}>
         <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6">

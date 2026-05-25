@@ -1,5 +1,4 @@
 // src/app/dashboard/page.tsx
-/* eslint-disable @next/next/no-img-element */
 "use client";
 
 import { useEffect, useState } from "react";
@@ -12,7 +11,6 @@ import {
   orderBy,
   deleteDoc,
   doc,
-  addDoc,
 } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { useRouter } from "next/navigation";
@@ -32,42 +30,17 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   Link2,
   MousePointerClick,
   CheckCircle,
-  Plus,
-  LogOut,
   QrCode,
   ArrowUpDown,
   Trash2,
-  Users,
-  ShieldCheck,
-  Calendar,
   Copy,
 } from "lucide-react";
 import { toast } from "sonner";
-import { ModeToggle } from "@/components/mode-toggle";
 
 // TanStack Table Imports
 import {
@@ -92,19 +65,8 @@ interface LinkData {
 
 export default function DashboardPage() {
   const router = useRouter();
-  // Correção do ESLint: Tipagem correta do Firebase User no lugar do 'any'
   const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-
-  // Estados do Modal de Novo Link (Movidos da página /links/new)
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [submitting, setSubmitting] = useState(false);
-  const [title, setTitle] = useState("");
-  const [originalUrl, setOriginalUrl] = useState("");
-  const [slug, setSlug] = useState("");
-  const [expiresAt, setExpiresAt] = useState("");
-  const [maxClicks, setMaxClicks] = useState("");
-  const [password, setPassword] = useState("");
 
   const [stats, setStats] = useState({
     totalLinks: 0,
@@ -174,12 +136,6 @@ export default function DashboardPage() {
     }
   };
 
-  const handleLogout = async () => {
-    await auth.signOut();
-    toast.success("Sessão encerrada com segurança.");
-    router.push("/login");
-  };
-
   const handleDeleteSelected = async () => {
     const selectedIds = table
       .getFilteredSelectedRowModel()
@@ -207,97 +163,6 @@ export default function DashboardPage() {
       toast.error("Falha ao excluir os links selecionados.");
     } finally {
       setIsDeleting(false);
-    }
-  };
-
-  // Funções trazidas do /links/new
-  const generateRandomSlug = () => {
-    const chars =
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
-    let result = "";
-    for (let i = 0; i < 6; i++) {
-      result += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
-    return result;
-  };
-
-  const handleCreateLink = async (e: React.FormEvent) => {
-    e.preventDefault();
-
-    if (!originalUrl) {
-      toast.error("A URL de destino é obrigatória.");
-      return;
-    }
-
-    if (
-      !originalUrl.startsWith("http://") &&
-      !originalUrl.startsWith("https://")
-    ) {
-      toast.error("A URL deve começar com http:// ou https://");
-      return;
-    }
-
-    setSubmitting(true);
-
-    let finalSlug = slug
-      .trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9_-]/g, "");
-    if (!finalSlug) {
-      finalSlug = generateRandomSlug();
-    }
-
-    if (finalSlug.length < 3) {
-      toast.error("O slug customizado deve conter pelo menos 3 caracteres.");
-      setSubmitting(false);
-      return;
-    }
-
-    try {
-      const linksRef = collection(db, "links");
-      const q = query(linksRef, where("slug", "==", finalSlug));
-      const querySnapshot = await getDocs(q);
-
-      if (!querySnapshot.empty) {
-        toast.error("Este link curto (slug) já está em uso na base da ITC.");
-        setSubmitting(false);
-        return;
-      }
-
-      // Correção do ESLint: Removido ': any'
-      const linkPayload = {
-        title: title.trim() || "Link Sem Título",
-        originalUrl: originalUrl.trim(),
-        slug: finalSlug,
-        clickCount: 0,
-        isActive: true,
-        createdBy: user!.uid,
-        createdAt: new Date(),
-        expiresAt: expiresAt ? new Date(expiresAt) : null,
-        maxClicks: maxClicks ? parseInt(maxClicks, 10) : null,
-        passwordHash: password ? password : null,
-      };
-
-      await addDoc(collection(db, "links"), linkPayload);
-
-      toast.success(`Sucesso! itcbr.xyz/${finalSlug} foi criado.`);
-
-      // Limpa formulário e fecha o modal
-      setTitle("");
-      setOriginalUrl("");
-      setSlug("");
-      setExpiresAt("");
-      setMaxClicks("");
-      setPassword("");
-      setIsDialogOpen(false);
-
-      // Atualiza a tabela
-      fetchDashboardData(user!.uid);
-    } catch (error) {
-      console.error("Erro ao criar link:", error);
-      toast.error("Falha ao salvar o encurtador no banco.");
-    } finally {
-      setSubmitting(false);
     }
   };
 
@@ -451,228 +316,6 @@ export default function DashboardPage() {
 
   return (
     <div className="flex-1 space-y-8 p-8 max-w-7xl mx-auto w-full font-sans transition-colors duration-300">
-      {/* Topbar / Header Institucional */}
-      <div className="flex items-center justify-between border-b border-border pb-5">
-        <div className="flex items-center gap-6">
-          <div className="hidden sm:flex h-10 w-auto items-center border-r border-border pr-6">
-            <img
-              src="/images/logo-light.png"
-              alt="ITC Brasil"
-              className="h-full w-auto object-contain dark:hidden"
-            />
-            <img
-              src="/images/logo-dark.png"
-              alt="ITC Brasil"
-              className="h-full w-auto object-contain hidden dark:block"
-            />
-          </div>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground font-display">
-            Dashboard
-          </h1>
-        </div>
-
-        <div className="flex items-center gap-4">
-          <ModeToggle />
-
-          {/* DIALOG INCORPORANDO O CÓDIGO DA PÁGINA NEW */}
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-itc-ciano hover:bg-itc-ciano800 text-white font-medium gap-2 shadow-sm font-sans">
-                <Plus className="h-4 w-4" /> Novo Link
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-xl bg-card border-border font-sans max-h-[90vh] overflow-y-auto">
-              <form onSubmit={handleCreateLink}>
-                <DialogHeader>
-                  <DialogTitle className="text-xl font-bold text-foreground font-display flex items-center gap-2">
-                    <Link2 className="h-5 w-5 text-itc-ciano" /> Criar Novo Link
-                    Curto
-                  </DialogTitle>
-                  <DialogDescription className="text-sm text-muted-foreground font-sans">
-                    Encurte URLs para materiais, carretas ou campanhas do Grupo
-                    ITC Brasil.
-                  </DialogDescription>
-                </DialogHeader>
-
-                <div className="space-y-5 py-4">
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">
-                      Título / Identificação Interna
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="Ex: Formulário de Inscrição — Carreta 04 (Qualifica DF)"
-                      value={title}
-                      onChange={(e) => setTitle(e.target.value)}
-                      className="font-sans border-input bg-transparent text-foreground focus-visible:ring-itc-ciano"
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">
-                      URL Original (Destino Longo) *
-                    </label>
-                    <Input
-                      type="text"
-                      placeholder="https://docs.google.com/forms/d/..."
-                      value={originalUrl}
-                      onChange={(e) => setOriginalUrl(e.target.value)}
-                      className="font-sans border-input bg-transparent text-foreground focus-visible:ring-itc-ciano"
-                      required
-                    />
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground">
-                      Link Encurtador Customizado
-                    </label>
-                    <div className="flex items-center rounded-md border border-input bg-accent/50 focus-within:ring-2 focus-within:ring-itc-ciano focus-within:border-transparent transition">
-                      <span className="pl-3 text-sm text-muted-foreground font-mono select-none">
-                        itcbr.xyz/
-                      </span>
-                      <input
-                        type="text"
-                        placeholder="ex-qualifica-df"
-                        value={slug}
-                        onChange={(e) => setSlug(e.target.value)}
-                        className="w-full bg-transparent py-2 px-1 text-sm font-mono text-foreground outline-none"
-                      />
-                    </div>
-                    <p className="text-xs text-muted-foreground font-sans">
-                      Apenas letras, números, hífens e sublinhados. Deixe em
-                      branco para gerar código aleatório.
-                    </p>
-                  </div>
-
-                  <div className="h-px bg-border my-2" />
-
-                  <h3 className="text-sm font-semibold text-foreground font-sans flex items-center gap-2">
-                    Regras Avançadas e Restrições{" "}
-                    <span className="text-xs font-normal text-muted-foreground">
-                      (Opcional)
-                    </span>
-                  </h3>
-
-                  <div className="grid gap-4 md:grid-cols-2">
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-foreground font-sans flex items-center gap-1">
-                        <Calendar className="h-3 w-3 text-muted-foreground" />{" "}
-                        Expira em (Data/Hora)
-                      </label>
-                      <Input
-                        type="datetime-local"
-                        value={expiresAt}
-                        onChange={(e) => setExpiresAt(e.target.value)}
-                        className="font-sans border-input bg-transparent text-foreground text-sm"
-                      />
-                    </div>
-
-                    <div className="space-y-2">
-                      <label className="text-xs font-medium text-foreground font-sans flex items-center gap-1">
-                        <Link2 className="h-3 w-3 text-muted-foreground" />{" "}
-                        Limite Máximo de Cliques
-                      </label>
-                      <Input
-                        type="number"
-                        placeholder="Ex: 500"
-                        value={maxClicks}
-                        onChange={(e) => setMaxClicks(e.target.value)}
-                        className="font-sans border-input bg-transparent text-foreground text-sm"
-                      />
-                    </div>
-                  </div>
-
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium text-foreground font-sans flex items-center gap-1">
-                      <ShieldCheck className="h-4 w-4 text-muted-foreground" />{" "}
-                      Proteger por Senha de Acesso
-                    </label>
-                    <Input
-                      type="password"
-                      placeholder="Digite uma senha para visitantes externos"
-                      value={password}
-                      onChange={(e) => setPassword(e.target.value)}
-                      className="font-sans border-input bg-transparent text-foreground focus-visible:ring-itc-ciano"
-                    />
-                  </div>
-                </div>
-
-                <DialogFooter className="gap-2 sm:gap-0 border-t border-border pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsDialogOpen(false)}
-                    className="border-border text-foreground hover:bg-accent font-sans"
-                    disabled={submitting}
-                  >
-                    Cancelar
-                  </Button>
-                  <Button
-                    type="submit"
-                    className="bg-itc-ciano hover:bg-itc-ciano800 text-white font-medium shadow-sm font-sans"
-                    disabled={submitting}
-                  >
-                    {submitting
-                      ? "Gravando no Firestore..."
-                      : "Gerar Link Curto"}
-                  </Button>
-                </DialogFooter>
-              </form>
-            </DialogContent>
-          </Dialog>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                variant="ghost"
-                className="relative h-10 w-10 rounded-full border border-border hover:bg-accent focus-visible:ring-itc-ciano"
-              >
-                <Avatar className="h-10 w-10">
-                  <AvatarImage
-                    src={user?.photoURL || undefined}
-                    alt={user?.displayName || "Usuário"}
-                  />
-                  <AvatarFallback className="bg-itc-ciano/10 text-itc-ciano font-bold font-sans">
-                    {user?.displayName?.charAt(0) || "U"}
-                  </AvatarFallback>
-                </Avatar>
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent
-              className="w-56 border-border"
-              align="end"
-              forceMount
-            >
-              <DropdownMenuLabel className="font-normal">
-                <div className="flex flex-col space-y-1">
-                  <p className="text-sm font-medium leading-none text-foreground font-sans">
-                    Olá, {user?.displayName}
-                  </p>
-                  <p className="text-xs leading-none text-muted-foreground font-sans">
-                    {user?.email}
-                  </p>
-                </div>
-              </DropdownMenuLabel>
-              <DropdownMenuSeparator className="bg-border" />
-
-              <DropdownMenuItem
-                onClick={() => router.push("/dashboard/users")}
-                className="cursor-pointer flex items-center gap-2 font-sans font-medium"
-              >
-                <Users className="h-4 w-4" /> Gestão de Equipe
-              </DropdownMenuItem>
-
-              <DropdownMenuItem
-                onClick={handleLogout}
-                className="text-itc-erro focus:text-itc-erro focus:bg-itc-erro/10 cursor-pointer flex items-center gap-2 font-sans font-medium"
-              >
-                <LogOut className="h-4 w-4" /> Sair
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
-      </div>
-
       {/* Grid de Cards de Métricas com Efeito de Hover e Movimento */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="bg-card border-border shadow-sm text-card-foreground transition-all duration-300 hover:shadow-md hover:border-itc-ciano/40 hover:-translate-y-1">
@@ -714,7 +357,7 @@ export default function DashboardPage() {
             <CardTitle className="text-sm font-medium text-muted-foreground font-sans">
               Links Ativos
             </CardTitle>
-            <CheckCircle className="h-4 w-4 text-itc-sucesso" />
+            <CheckCircle className="h-4 w-4 text-itc-ciano" />
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold font-sans text-foreground">
