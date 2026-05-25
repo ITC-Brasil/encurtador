@@ -2,18 +2,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { db, auth } from "@/lib/firebase";
-import {
-  collection,
-  query,
-  getDocs,
-  updateDoc,
-  doc,
-  addDoc,
-  where,
-} from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
+import { auth } from "@/lib/firebase";
+import { onAuthStateChanged } from "firebase/auth";
 import {
   Card,
   CardContent,
@@ -21,17 +12,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
@@ -42,411 +32,353 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import {
   ArrowLeft,
-  Plus,
+  UserPlus,
+  Trash2,
   ShieldCheck,
-  UserX,
-  UserCheck,
+  Mail,
+  User,
+  Play,
+  AlertTriangle,
   ArrowUpDown,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ModeToggle } from "@/components/mode-toggle";
 
-// TanStack Table Imports
-import {
-  ColumnDef,
-  flexRender,
-  getCoreRowModel,
-  getSortedRowModel,
-  SortingState,
-  useReactTable,
-} from "@tanstack/react-table";
-
-interface UserData {
-  id: string;
+interface Colaborador {
+  uid: string;
+  name: string;
   email: string;
-  displayName: string;
-  role: string;
-  isActive: boolean;
+  role: "Administrador" | "Colaborador";
+  status: "Ativo" | "Suspenso" | "Bloqueado";
+  createdAt: string;
 }
 
-export default function UsersManagementPage() {
+type OrderDirection = "asc" | "desc" | null;
+
+export default function GestaoUsuariosPage() {
   const router = useRouter();
-  const [currentUserData, setCurrentUserData] = useState<UserData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [usersList, setUsersList] = useState<UserData[]>([]);
-
-  const [sorting, setSorting] = useState<SortingState>([]);
-
-  const [isAddOpen, setIsAddOpen] = useState(false);
-  const [newUser, setNewUser] = useState({
-    email: "",
-    displayName: "",
-    role: "collaborator",
-  });
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
+  const [isDialogOpen, setIsDialogOpen] = useState(false);
+  const [currentAdminEmail, setCurrentAdminEmail] = useState<string | null>(
+    null,
+  );
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      if (!user) {
-        router.push("/login");
-        return;
-      }
+  // Estados de ordenação estilo Data Table
+  const [sortRole, setSortRole] = useState<OrderDirection>(null);
+  const [sortStatus, setSortStatus] = useState<OrderDirection>(null);
 
-      try {
-        const usersRef = collection(db, "users");
-        const q = query(usersRef, where("email", "==", user.email));
-        const snapshot = await getDocs(q);
+  const [newUserData, setNewUserData] = useState({
+    name: "",
+    email: "",
+    role: "Colaborador",
+  });
 
-        if (!snapshot.empty) {
-          const uData = {
-            id: snapshot.docs[0].id,
-            ...snapshot.docs[0].data(),
-          } as UserData;
-          if (uData.role !== "admin") {
-            toast.error(
-              "Acesso negado. Apenas administradores podem gerenciar usuários.",
-            );
-            router.push("/dashboard");
-            return;
-          }
-          setCurrentUserData(uData);
-          fetchUsers();
-        } else {
-          router.push("/login");
-        }
-      } catch (error) {
-        console.error("Erro ao validar admin:", error);
-      }
-    });
+  const cardHoverClass =
+    "transition-all duration-300 hover:shadow-md hover:border-itc-ciano/30";
 
-    return () => unsubscribe();
-  }, [router]);
-
-  const fetchUsers = async () => {
+  const fetchColaboradores = async () => {
     try {
-      const querySnapshot = await getDocs(collection(db, "users"));
-      const usersArray: UserData[] = [];
-      querySnapshot.forEach((doc) => {
-        usersArray.push({ id: doc.id, ...doc.data() } as UserData);
-      });
-      setUsersList(usersArray);
-    } catch (error) {
-      toast.error("Erro ao carregar lista de usuários.");
+      const res = await fetch("/api/usuarios");
+      if (!res.ok) throw new Error();
+      const data = await res.json();
+      setColaboradores(data);
+    } catch {
+      toast.error("Não foi possível carregar os colaboradores.");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleAddUser = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newUser.email || !newUser.displayName)
-      return toast.error("Preencha todos os campos.");
-
-    setIsSubmitting(true);
-    try {
-      const q = query(
-        collection(db, "users"),
-        where("email", "==", newUser.email),
-      );
-      const exist = await getDocs(q);
-      if (!exist.empty) {
-        toast.error("Este e-mail já está cadastrado.");
-        setIsSubmitting(false);
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      if (!user) {
+        router.push("/login");
         return;
       }
+      setCurrentAdminEmail(user.email);
+      fetchColaboradores();
+    });
+    return () => unsubscribe();
+  }, [router]);
 
-      await addDoc(collection(db, "users"), {
-        email: newUser.email,
-        displayName: newUser.displayName,
-        role: newUser.role,
-        isActive: true,
-        createdAt: new Date(),
+  // CONTROLE DE ORDENAÇÃO DO DATA TABLE
+  const toggleSortRole = () => {
+    const nextDirection: OrderDirection =
+      sortRole === "asc" ? "desc" : sortRole === "desc" ? null : "asc";
+    setSortRole(nextDirection);
+    setSortStatus(null);
+
+    if (!nextDirection) {
+      fetchColaboradores();
+      return;
+    }
+
+    setColaboradores((prev) =>
+      [...prev].sort((a, b) => {
+        return nextDirection === "asc"
+          ? a.role.localeCompare(b.role)
+          : b.role.localeCompare(a.role);
+      }),
+    );
+  };
+
+  const toggleSortStatus = () => {
+    const nextDirection: OrderDirection =
+      sortStatus === "asc" ? "desc" : sortStatus === "desc" ? null : "asc";
+    setSortStatus(nextDirection);
+    setSortRole(null);
+
+    if (!nextDirection) {
+      fetchColaboradores();
+      return;
+    }
+
+    setColaboradores((prev) =>
+      [...prev].sort((a, b) => {
+        const statusA = a.status || "Ativo";
+        const statusB = b.status || "Ativo";
+        return nextDirection === "asc"
+          ? statusA.localeCompare(statusB)
+          : statusB.localeCompare(statusA);
+      }),
+    );
+  };
+
+  const handleRoleChange = async (
+    uid: string,
+    newRole: "Administrador" | "Colaborador",
+  ) => {
+    try {
+      const res = await fetch("/api/usuarios", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid, role: newRole }),
       });
+      if (!res.ok) throw new Error();
+      setColaboradores((prev) =>
+        prev.map((c) => (c.uid === uid ? { ...c, role: newRole } : c)),
+      );
+      toast.success("Permissão updated!");
+    } catch {
+      toast.error("Erro ao alterar permissão.");
+    }
+  };
 
-      toast.success("Usuário convidado com sucesso!");
-      setIsAddOpen(false);
-      setNewUser({ email: "", displayName: "", role: "collaborator" });
-      fetchUsers();
-    } catch (error) {
-      toast.error("Erro ao adicionar usuário.");
+  const handleToggleStatus = async (
+    uid: string,
+    currentStatus: string,
+    name: string,
+  ) => {
+    const nextStatus =
+      currentStatus === "Suspenso" || currentStatus === "Bloqueado"
+        ? "Ativo"
+        : "Suspenso";
+    try {
+      const res = await fetch("/api/usuarios", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ uid, status: nextStatus }),
+      });
+      if (!res.ok) throw new Error();
+
+      setColaboradores((prev) =>
+        prev.map((c) => (c.uid === uid ? { ...c, status: nextStatus } : c)),
+      );
+      toast.success(
+        nextStatus === "Suspenso"
+          ? `Acesso de ${name} suspenso.`
+          : `Acesso de ${name} reativado.`,
+      );
+    } catch {
+      toast.error("Erro ao alterar status do colaborador.");
+    }
+  };
+
+  const handleDeletarUsuario = async (uid: string, name: string) => {
+    if (
+      !confirm(
+        `⚠️ ALERTA MÁXIMO:\nDeseja DELETAR DEFINITIVAMENTE o colaborador ${name}?\nEsta ação apagará a conta permanentemente.`,
+      )
+    )
+      return;
+
+    try {
+      const res = await fetch(`/api/usuarios?uid=${uid}`, { method: "DELETE" });
+      if (!res.ok) throw new Error();
+
+      setColaboradores((prev) => prev.filter((c) => c.uid !== uid));
+      toast.success(`Usuário ${name} excluído do sistema.`);
+    } catch {
+      toast.error("Falha ao deletar o colaborador.");
+    }
+  };
+
+  const handleCreateColaborador = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setIsSubmitting(true);
+    try {
+      const randomPassword =
+        Math.random().toString(36).substring(2) + "ITC@2026!";
+
+      const res = await fetch("/api/usuarios", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...newUserData, password: randomPassword }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Erro ao registrar usuário.");
+
+      toast.success("Colaborador cadastrado via Google Auth!");
+      setIsDialogOpen(false);
+      setNewUserData({ name: "", email: "", role: "Colaborador" });
+      fetchColaboradores();
+    } catch (error: unknown) {
+      if (error instanceof Error) {
+        toast.error(error.message);
+      } else {
+        toast.error("Erro no cadastro.");
+      }
     } finally {
       setIsSubmitting(false);
     }
   };
 
-  const handleToggleStatus = async (userId: string, currentStatus: boolean) => {
-    try {
-      await updateDoc(doc(db, "users", userId), { isActive: !currentStatus });
-      toast.success(`Acesso ${!currentStatus ? "liberado" : "revogado"}.`);
-      fetchUsers();
-    } catch (error) {
-      toast.error("Erro ao alterar status.");
-    }
-  };
-
-  const handleRoleChange = async (userId: string, newRole: string) => {
-    try {
-      await updateDoc(doc(db, "users", userId), { role: newRole });
-      toast.success("Nível de permissão atualizado.");
-      fetchUsers();
-    } catch (error) {
-      toast.error("Erro ao alterar permissão.");
-    }
-  };
-
-  // Definição das Colunas do Data Table
-  const columns: ColumnDef<UserData>[] = [
-    {
-      accessorKey: "displayName",
-      header: "Colaborador",
-      cell: ({ row }) => (
-        <div className="flex flex-col font-sans">
-          <span className="font-medium text-foreground">
-            {row.original.displayName}
-          </span>
-          <span className="text-sm text-muted-foreground">
-            {row.original.email}
-          </span>
-        </div>
-      ),
-    },
-    {
-      accessorKey: "role",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="hover:bg-accent hover:text-foreground font-semibold px-0 font-sans flex items-center gap-1"
-        >
-          Permissão
-          <ArrowUpDown className="h-4 w-4" />
-        </Button>
-      ),
-      cell: ({ row }) => {
-        const u = row.original;
-        return (
-          <Select
-            value={u.role}
-            onValueChange={(val) => handleRoleChange(u.id, val)}
-            disabled={currentUserData?.id === u.id}
-          >
-            <SelectTrigger className="w-35 h-8 text-xs font-sans">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent className="font-sans">
-              <SelectItem value="collaborator">Colaborador</SelectItem>
-              <SelectItem value="admin">Administrador</SelectItem>
-            </SelectContent>
-          </Select>
-        );
-      },
-    },
-    {
-      accessorKey: "isActive",
-      header: ({ column }) => (
-        <Button
-          variant="ghost"
-          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-          className="hover:bg-accent hover:text-foreground font-semibold px-0 font-sans flex items-center gap-1"
-        >
-          Status
-          <ArrowUpDown className="h-4 w-4" />
-        </Button>
-      ),
-      cell: ({ row }) => {
-        const isActive = row.original.isActive;
-        return (
-          <Badge
-            variant={isActive ? "default" : "destructive"}
-            className={
-              isActive
-                ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/20 border-none shadow-none"
-                : "bg-red-500/10 text-red-600 dark:text-red-400 hover:bg-red-500/20 border-none shadow-none"
-            }
-          >
-            {isActive ? "Ativo" : "Bloqueado"}
-          </Badge>
-        );
-      },
-    },
-    {
-      id: "actions",
-      header: () => (
-        <div className="text-right font-semibold font-sans text-muted-foreground">
-          Ações
-        </div>
-      ),
-      cell: ({ row }) => {
-        const u = row.original;
-        return (
-          <div className="text-right">
-            <Button
-              size="sm"
-              className={`font-sans gap-2 text-white shadow-sm transition-colors ${
-                u.isActive
-                  ? "bg-red-600 hover:bg-red-700 dark:bg-red-600 dark:hover:bg-red-700"
-                  : "bg-emerald-600 hover:bg-emerald-700 dark:bg-emerald-600 dark:hover:bg-emerald-700"
-              }`}
-              onClick={() => handleToggleStatus(u.id, u.isActive)}
-              disabled={currentUserData?.id === u.id}
-            >
-              {u.isActive ? (
-                <>
-                  <UserX className="h-4 w-4" /> Revogar
-                </>
-              ) : (
-                <>
-                  <UserCheck className="h-4 w-4" /> Reativar
-                </>
-              )}
-            </Button>
-          </div>
-        );
-      },
-    },
-  ];
-
-  const table = useReactTable({
-    data: usersList,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-    onSortingChange: setSorting,
-    getSortedRowModel: getSortedRowModel(),
-    state: {
-      sorting,
-    },
-  });
-
   if (loading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center font-sans text-muted-foreground">
-        Validando credenciais de administrador...
+      <div className="flex h-screen w-full items-center justify-center font-sans font-medium text-sm text-muted-foreground bg-background">
+        Carregando painel de segurança...
       </div>
     );
   }
 
   return (
     <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
-      {/* Topbar */}
-      <div className="flex items-center justify-between border-b border-border pb-5">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            onClick={() => router.push("/dashboard")}
-            className="text-muted-foreground pl-0 hover:bg-transparent font-sans"
-          >
-            <ArrowLeft className="h-4 w-4 mr-2" /> Voltar
-          </Button>
-          <h1 className="text-2xl font-bold tracking-tight text-foreground font-display flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-itc-ciano" /> Gestão de Acessos
-          </h1>
+      <div className="flex flex-col gap-2 border-b border-border pb-5">
+        <Button
+          variant="ghost"
+          onClick={() => router.push("/dashboard")}
+          className="text-muted-foreground gap-2 pl-0 hover:bg-transparent font-sans text-xs w-max"
+        >
+          <ArrowLeft className="h-4 w-4" /> Voltar ao Painel
+        </Button>
+        <div className="flex items-center justify-between w-full">
+          <div className="flex items-center gap-3">
+            <ShieldCheck className="h-6 w-5 text-itc-ciano" />
+            <h1 className="text-2xl font-bold tracking-tight text-foreground font-sans">
+              Gestão de Acessos
+            </h1>
+          </div>
+          <ModeToggle />
         </div>
-        <ModeToggle />
       </div>
 
-      <Card className="bg-card border-border shadow-sm text-card-foreground">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-lg font-bold text-foreground font-sans">
+      <Card className={`bg-card border-border shadow-sm ${cardHoverClass}`}>
+        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6">
+          <div className="space-y-1">
+            <CardTitle className="text-xl font-bold text-foreground font-sans">
               Equipe ITC Brasil
             </CardTitle>
-            <CardDescription className="text-muted-foreground font-sans">
-              Gerencie quem pode acessar o sistema e criar encurtadores.
+            <CardDescription className="text-xs text-muted-foreground font-sans">
+              Gerencie acessos temporários ou remova usuários permanentemente do
+              ecossistema.
             </CardDescription>
           </div>
 
-          <Dialog open={isAddOpen} onOpenChange={setIsAddOpen}>
+          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
             <DialogTrigger asChild>
-              <Button className="bg-itc-ciano hover:bg-itc-ciano800 text-white font-medium gap-2 shadow-sm font-sans">
-                <Plus className="h-4 w-4" /> Novo Colaborador
+              <Button className="bg-itc-ciano hover:bg-itc-ciano800 text-white font-sans text-xs font-medium gap-2 h-9 shadow-sm">
+                <UserPlus className="h-4 w-4" /> Novo Colaborador
               </Button>
             </DialogTrigger>
-            <DialogContent className="sm:max-w-106.25 font-sans border-border bg-card">
-              <DialogHeader>
-                <DialogTitle className="text-foreground">
-                  Convidar Colaborador
-                </DialogTitle>
-                <DialogDescription className="text-muted-foreground">
-                  Adicione o e-mail Google da pessoa. Ela poderá logar
-                  instantaneamente após a inclusão.
-                </DialogDescription>
-              </DialogHeader>
-              <form onSubmit={handleAddUser} className="space-y-4 pt-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Nome de Exibição
-                  </label>
-                  <Input
-                    required
-                    placeholder="Ex: João Silva"
-                    value={newUser.displayName}
-                    onChange={(e) =>
-                      setNewUser({ ...newUser, displayName: e.target.value })
-                    }
-                    className="border-input"
-                  />
+            <DialogContent className="sm:max-w-md bg-card border-border font-sans">
+              <form onSubmit={handleCreateColaborador}>
+                <DialogHeader>
+                  <DialogTitle className="text-lg font-bold font-sans">
+                    Adicionar Colaborador
+                  </DialogTitle>
+                  <DialogDescription className="text-xs text-muted-foreground font-sans">
+                    Os colaboradores adicionados realizarão a autenticação de
+                    forma direta e segura através do Google.
+                  </DialogDescription>
+                </DialogHeader>
+                <div className="space-y-4 py-4">
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 font-sans">
+                      <User className="h-3.5 w-3.5 text-itc-ciano" /> Nome
+                      Completo
+                    </span>
+                    <Input
+                      required
+                      value={newUserData.name}
+                      onChange={(e) =>
+                        setNewUserData({ ...newUserData, name: e.target.value })
+                      }
+                      placeholder="Ex: João Silva"
+                      className="h-9 text-sm font-sans"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 font-sans">
+                      <Mail className="h-3.5 w-3.5 text-itc-ciano" /> E-mail
+                      Corporativo
+                    </span>
+                    <Input
+                      type="email"
+                      required
+                      value={newUserData.email}
+                      onChange={(e) =>
+                        setNewUserData({
+                          ...newUserData,
+                          email: e.target.value,
+                        })
+                      }
+                      placeholder="nome@grupoitcbrasil.com.br"
+                      className="h-9 text-sm font-sans"
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <span className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 font-sans">
+                      <ShieldCheck className="h-3.5 w-3.5 text-itc-ciano" />{" "}
+                      Nível de Permissão
+                    </span>
+                    <Select
+                      value={newUserData.role}
+                      onValueChange={(val) =>
+                        setNewUserData({ ...newUserData, role: val })
+                      }
+                    >
+                      <SelectTrigger className="h-9 text-sm font-sans">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border font-sans">
+                        <SelectItem value="Colaborador">Colaborador</SelectItem>
+                        <SelectItem value="Administrador">
+                          Administrador
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    E-mail corporativo (Google)
-                  </label>
-                  <Input
-                    type="email"
-                    required
-                    placeholder="joao@itcbrasil.com.br"
-                    value={newUser.email}
-                    onChange={(e) =>
-                      setNewUser({ ...newUser, email: e.target.value })
-                    }
-                    className="border-input"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-foreground">
-                    Nível de Acesso
-                  </label>
-                  <Select
-                    value={newUser.role}
-                    onValueChange={(val) =>
-                      setNewUser({ ...newUser, role: val })
-                    }
-                  >
-                    <SelectTrigger className="border-input">
-                      <SelectValue placeholder="Selecione..." />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="collaborator">
-                        Colaborador (Pode criar links)
-                      </SelectItem>
-                      <SelectItem value="admin">
-                        Administrador (Acesso total)
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                <DialogFooter className="pt-4">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={() => setIsAddOpen(false)}
-                    className="border-border"
-                  >
-                    Cancelar
-                  </Button>
+                <DialogFooter>
                   <Button
                     type="submit"
                     disabled={isSubmitting}
-                    className="bg-itc-ciano text-white hover:bg-itc-ciano800 shadow-sm"
+                    className="w-full bg-itc-ciano hover:bg-itc-ciano800 h-9 text-xs font-sans"
                   >
-                    {isSubmitting ? "Salvando..." : "Adicionar Acesso"}
+                    {isSubmitting
+                      ? "Cadastrando..."
+                      : "Confirmar Cadastro Corporativo"}
                   </Button>
                 </DialogFooter>
               </form>
@@ -454,63 +386,147 @@ export default function UsersManagementPage() {
           </Dialog>
         </CardHeader>
 
-        <CardContent>
-          <div className="rounded-md border border-border">
-            <Table>
-              <TableHeader className="bg-accent/50">
-                {table.getHeaderGroups().map((headerGroup) => (
-                  <TableRow
-                    key={headerGroup.id}
-                    className="border-border hover:bg-transparent"
-                  >
-                    {headerGroup.headers.map((header) => {
-                      return (
-                        <TableHead
-                          key={header.id}
-                          className="text-muted-foreground font-semibold font-sans"
+        <CardContent className="p-0 border-t border-border">
+          <Table>
+            <TableHeader className="bg-muted/20">
+              <TableRow className="border-b border-border">
+                <TableHead className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans">
+                  Colaborador
+                </TableHead>
+                <TableHead
+                  onClick={toggleSortRole}
+                  className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans cursor-pointer hover:bg-muted/30 select-none"
+                >
+                  <div className="flex items-center gap-1">
+                    Permissão <ArrowUpDown className="h-3 w-3" />
+                  </div>
+                </TableHead>
+                <TableHead
+                  onClick={toggleSortStatus}
+                  className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans text-center cursor-pointer hover:bg-muted/30 select-none"
+                >
+                  <div className="flex items-center justify-center gap-1">
+                    Status <ArrowUpDown className="h-3 w-3" />
+                  </div>
+                </TableHead>
+                <TableHead className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans text-right">
+                  Ações
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {colaboradores.map((colab) => (
+                <TableRow
+                  key={colab.uid}
+                  className="border-b border-border hover:bg-muted/30 transition-colors"
+                >
+                  <TableCell className="py-4 px-6">
+                    <p className="text-sm font-normal text-muted-foreground/80 font-sans tracking-wide break-all">
+                      {colab.email}
+                    </p>
+                  </TableCell>
+
+                  <TableCell className="py-4 px-6">
+                    <Select
+                      disabled={colab.email === currentAdminEmail}
+                      value={
+                        colab.role === "Administrador" ||
+                        colab.role === "Colaborador"
+                          ? colab.role
+                          : "Colaborador"
+                      }
+                      onValueChange={(val: "Administrador" | "Colaborador") =>
+                        handleRoleChange(colab.uid, val)
+                      }
+                    >
+                      <SelectTrigger className="w-36 border-border text-xs h-8 bg-background font-sans">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-card border-border font-sans">
+                        <SelectItem
+                          value="Administrador"
+                          className="text-xs font-semibold"
                         >
-                          {header.isPlaceholder
-                            ? null
-                            : flexRender(
-                                header.column.columnDef.header,
-                                header.getContext(),
-                              )}
-                        </TableHead>
-                      );
-                    })}
-                  </TableRow>
-                ))}
-              </TableHeader>
-              <TableBody>
-                {table.getRowModel().rows?.length ? (
-                  table.getRowModel().rows.map((row) => (
-                    <TableRow
-                      key={row.id}
-                      className="border-border hover:bg-accent/50 transition-colors"
+                          Administrador
+                        </SelectItem>
+                        <SelectItem value="Colaborador" className="text-xs">
+                          Colaborador
+                        </SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </TableCell>
+
+                  <TableCell className="py-4 px-6 text-center">
+                    <Badge
+                      className={`border-none text-[10px] font-bold px-2.5 h-5 font-sans ${
+                        colab.status === "Suspenso" ||
+                        colab.status === "Bloqueado"
+                          ? "bg-itc-erro/10 text-itc-erro hover:bg-itc-erro/10"
+                          : "bg-itc-sucesso/10 text-itc-sucesso hover:bg-itc-sucesso/10"
+                      }`}
                     >
-                      {row.getVisibleCells().map((cell) => (
-                        <TableCell key={cell.id}>
-                          {flexRender(
-                            cell.column.columnDef.cell,
-                            cell.getContext(),
-                          )}
-                        </TableCell>
-                      ))}
-                    </TableRow>
-                  ))
-                ) : (
-                  <TableRow>
-                    <TableCell
-                      colSpan={columns.length}
-                      className="h-24 text-center text-muted-foreground"
-                    >
-                      Nenhum colaborador encontrado.
-                    </TableCell>
-                  </TableRow>
-                )}
-              </TableBody>
-            </Table>
-          </div>
+                      {colab.status || "Ativo"}
+                    </Badge>
+                  </TableCell>
+
+                  <TableCell className="py-4 px-6 text-right">
+                    <div className="flex items-center justify-end gap-2">
+                      <Button
+                        variant="outline"
+                        disabled={colab.email === currentAdminEmail}
+                        onClick={() =>
+                          handleToggleStatus(
+                            colab.uid,
+                            colab.status || "Ativo",
+                            colab.name,
+                          )
+                        }
+                        className={`text-xs font-medium h-8 px-2.5 gap-1 border-border font-sans ${
+                          colab.status === "Suspenso" ||
+                          colab.status === "Bloqueado"
+                            ? "text-itc-sucesso hover:bg-itc-sucesso/10 hover:text-itc-sucesso border-itc-sucesso/30"
+                            : "text-amber-500 hover:bg-amber-500/10 hover:text-amber-600"
+                        }`}
+                      >
+                        {colab.status === "Suspenso" ||
+                        colab.status === "Bloqueado" ? (
+                          <>
+                            <Play className="h-3.5 w-3.5" /> Reativar
+                          </>
+                        ) : (
+                          <>
+                            <AlertTriangle className="h-3.5 w-3.5" /> Suspender
+                          </>
+                        )}
+                      </Button>
+
+                      <Button
+                        variant="destructive"
+                        disabled={colab.email === currentAdminEmail}
+                        onClick={() =>
+                          handleDeletarUsuario(colab.uid, colab.name)
+                        }
+                        className="bg-itc-erro/10 text-itc-erro hover:bg-itc-erro hover:text-white border-none font-medium text-xs gap-1 h-8 px-2.5 transition-all duration-200 font-sans"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" /> Deletar
+                      </Button>
+                    </div>
+                  </TableCell>
+                </TableRow>
+              ))}
+
+              {colaboradores.length === 0 && (
+                <TableRow>
+                  <TableCell
+                    colSpan={4}
+                    className="py-8 text-center text-xs text-muted-foreground font-medium font-sans"
+                  >
+                    Nenhum colaborador encontrado no banco de dados.
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
         </CardContent>
       </Card>
     </div>

@@ -12,6 +12,7 @@ export async function GET() {
     }));
     return NextResponse.json(usersList, { status: 200 });
   } catch (error: any) {
+    console.error("🔥 ERRO NO GET /api/usuarios:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
@@ -21,7 +22,7 @@ export async function POST(request: Request) {
   try {
     const { email, password, name, role } = await request.json();
 
-    if (!email || !password || !name) {
+    if (!email || !name) {
       return NextResponse.json(
         { error: "Dados incompletos." },
         { status: 400 },
@@ -41,20 +42,18 @@ export async function POST(request: Request) {
         name,
         email,
         role: role || "Colaborador",
-        status: "Ativo", // Inicializa ativo por padrão
+        status: "Ativo",
         createdAt: new Date().toISOString(),
       });
 
-    return NextResponse.json(
-      { message: "Usuário criado com sucesso!" },
-      { status: 201 },
-    );
+    return NextResponse.json({ message: "Usuário criado!" }, { status: 201 });
   } catch (error: any) {
+    console.error("🔥 ERRO NO POST /api/usuarios:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// 3. MODIFICAR ATRIBUTOS (ROLE OU STATUS DE ATIVAÇÃO)
+// 3. MODIFICAR ATRIBUTOS
 export async function PUT(request: Request) {
   try {
     const { uid, role, status } = await request.json();
@@ -67,25 +66,27 @@ export async function PUT(request: Request) {
     if (role) updateData.role = role;
     if (status) updateData.status = status;
 
+    // Atualiza o Firestore
     await adminDb.collection("users").doc(uid).update(updateData);
 
-    // Se o status foi alterado para Suspenso, desloga e bloqueia o usuário no Auth também
+    // Atualiza o Auth apenas se o status mudar
     if (status === "Suspenso") {
-      await adminAuth.updateUser(uid, { disabled: true });
+      await adminAuth.updateUser(uid, { disabled: true }).catch(() => null);
     } else if (status === "Ativo") {
-      await adminAuth.updateUser(uid, { disabled: false });
+      await adminAuth.updateUser(uid, { disabled: false }).catch(() => null);
     }
 
     return NextResponse.json(
-      { message: "Usuário atualizado com sucesso!" },
+      { message: "Usuário atualizado!" },
       { status: 200 },
     );
   } catch (error: any) {
+    console.error("🔥 ERRO NO PUT /api/usuarios:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }
 
-// 4. DELETAR DEFINITIVAMENTE DO BANCO E DO AUTH
+// 4. DELETAR
 export async function DELETE(request: Request) {
   try {
     const { searchParams } = new URL(request.url);
@@ -98,14 +99,17 @@ export async function DELETE(request: Request) {
       );
     }
 
-    await adminAuth.deleteUser(uid);
+    // Tenta deletar do Auth (se falhar porque não existe no auth, segue viagem para limpar o Firestore)
+    await adminAuth
+      .deleteUser(uid)
+      .catch((err) => console.log("Aviso: Usuário não existia no Auth Engine"));
+
+    // Deleta do Firestore
     await adminDb.collection("users").doc(uid).delete();
 
-    return NextResponse.json(
-      { message: "Usuário removido para sempre." },
-      { status: 200 },
-    );
+    return NextResponse.json({ message: "Usuário removido." }, { status: 200 });
   } catch (error: any) {
+    console.error("🔥 ERRO NO DELETE /api/usuarios:", error);
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 }

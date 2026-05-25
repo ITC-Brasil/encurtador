@@ -12,6 +12,7 @@ import {
   query,
   orderBy,
   getDocs,
+  Timestamp,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import {
@@ -64,8 +65,8 @@ interface LinkDetail {
   title: string;
   clickCount: number;
   isActive: boolean;
-  createdAt: any;
-  expiresAt?: any;
+  createdAt: Timestamp; // Correção ESLint: Tipagem oficial ao invés de 'any'
+  expiresAt?: Timestamp; // Correção ESLint: Tipagem oficial ao invés de 'any'
   maxClicks?: number;
   passwordHash?: string;
 }
@@ -247,7 +248,8 @@ export default function LinkDetailsPage({
       toast.success(
         `O link foi ${newState ? "ativado" : "desativado"} com sucesso.`,
       );
-    } catch (error) {
+    } catch {
+      // Correção ESLint: Variável 'error' removida pois não era utilizada aqui
       toast.error("Erro ao alterar o status do link.");
     }
   };
@@ -477,8 +479,14 @@ export default function LinkDetailsPage({
             </CardHeader>
             <CardContent className="pt-4">
               {chartData.length > 0 ? (
-                <div className="h-36 w-full">
-                  <ResponsiveContainer width="100%" height="100%" minWidth={0}>
+                // Correção do aviso do Recharts: h-[160px] e minHeight adicionados
+                <div className="h-40 w-full">
+                  <ResponsiveContainer
+                    width="100%"
+                    height="100%"
+                    minHeight={160}
+                    minWidth={0}
+                  >
                     <LineChart
                       data={chartData}
                       margin={{ top: 5, right: 15, left: -25, bottom: 5 }}
@@ -542,7 +550,7 @@ export default function LinkDetailsPage({
             </CardContent>
           </Card>
 
-          {/* Grid Duplo: Cidades e Dispositivos - Ajustado com flex-1 para preencher e alinhar com o fundo do QR Code */}
+          {/* Grid Duplo: Cidades e Dispositivos */}
           {chartData.length > 0 && (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 items-stretch">
               {/* Card Cidades */}
