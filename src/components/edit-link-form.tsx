@@ -4,6 +4,7 @@
 import { useState, useEffect } from "react";
 import { db } from "@/lib/firebase";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
+import bcrypt from "bcryptjs"; // <-- Importação do Bcrypt
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -30,7 +31,6 @@ export function EditLinkForm({
     slug: "",
   });
 
-  // Estados do gerenciamento de senha
   const [isProtected, setIsProtected] = useState(false);
   const [password, setPassword] = useState("");
   const [hadPasswordInitially, setHadPasswordInitially] = useState(false);
@@ -59,7 +59,7 @@ export function EditLinkForm({
           toast.error("Link não encontrado.");
         }
       } catch (err) {
-        console.error("Erro ao carregar dados:", err); // <-- Erro do ESLint resolvido
+        console.error("Erro ao carregar dados:", err);
         toast.error("Erro ao buscar dados do link.");
       } finally {
         setLoading(false);
@@ -83,7 +83,6 @@ export function EditLinkForm({
     try {
       const docRef = doc(db, "links", linkId);
 
-      // Tipagem correta sem usar o 'any' (Erro do ESLint resolvido)
       const updateFields: Record<string, string | null> = {
         title: formData.title,
         originalUrl: formData.originalUrl,
@@ -92,7 +91,8 @@ export function EditLinkForm({
       if (!isProtected) {
         updateFields.passwordHash = null;
       } else if (password) {
-        updateFields.passwordHash = password;
+        // Criptografando a nova senha na edição
+        updateFields.passwordHash = await bcrypt.hash(password, 10);
       }
 
       await updateDoc(docRef, updateFields);
@@ -100,7 +100,7 @@ export function EditLinkForm({
       toast.success("Link atualizado com sucesso!");
       onSuccess();
     } catch (err) {
-      console.error("Erro ao atualizar:", err); // <-- Erro do ESLint resolvido
+      console.error("Erro ao atualizar:", err);
       toast.error("Erro ao atualizar o link.");
       setIsSaving(false);
     }

@@ -4,6 +4,8 @@
 import { useState } from "react";
 import { db } from "@/lib/firebase";
 import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
+import { Timestamp } from "firebase/firestore"; // <-- Importação do Timestamp
+import bcrypt from "bcryptjs"; // <-- Importação do Bcrypt
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
@@ -26,8 +28,8 @@ export function NewLinkForm({ userId, onSuccess, onCancel }: NewLinkFormProps) {
   const [password, setPassword] = useState("");
 
   const generateRandomSlug = () => {
-    const chars =
-      "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+    // Quick win aplicado: Apenas letras minúsculas e números
+    const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
     let result = "";
     for (let i = 0; i < 6; i++) {
       result += chars.charAt(Math.floor(Math.random() * chars.length));
@@ -59,7 +61,10 @@ export function NewLinkForm({ userId, onSuccess, onCancel }: NewLinkFormProps) {
         return;
       }
 
-      // Tipagem correta baseada no Firestore
+      // Hash da senha (se existir) com 10 rounds de salt
+      const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
+
+      // Tipagem correta usando Timestamp nativo do Firestore
       const linkPayload = {
         title: title.trim() || "Link Sem Título",
         originalUrl: originalUrl.trim(),
@@ -67,10 +72,10 @@ export function NewLinkForm({ userId, onSuccess, onCancel }: NewLinkFormProps) {
         clickCount: 0,
         isActive: true,
         createdBy: userId || null,
-        createdAt: new Date().toISOString(),
-        expiresAt: expiresAt ? new Date(expiresAt).toISOString() : null,
+        createdAt: Timestamp.now(),
+        expiresAt: expiresAt ? Timestamp.fromDate(new Date(expiresAt)) : null,
         maxClicks: maxClicks ? parseInt(maxClicks, 10) : null,
-        passwordHash: password ? password : null,
+        passwordHash: hashedPassword,
       };
 
       await addDoc(collection(db, "links"), linkPayload);
