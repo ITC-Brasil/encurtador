@@ -64,6 +64,7 @@ import {
   Users,
   ShieldCheck,
   Calendar,
+  Copy,
 } from "lucide-react";
 import { toast } from "sonner";
 import { ModeToggle } from "@/components/mode-toggle";
@@ -339,15 +340,31 @@ export default function DashboardPage() {
       header: "Link Curto",
       cell: ({ row }) => {
         const slug = row.getValue("slug") as string;
+        const shortLink = `itcbr.xyz/${slug}`;
+
         return (
-          <a
-            href={`/${slug}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="font-sans font-medium text-itc-ciano text-sm hover:underline"
-          >
-            itcbr.xyz/{slug}
-          </a>
+          <div className="flex items-center gap-2">
+            <a
+              href={`/${slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-sans font-medium text-itc-ciano text-sm hover:underline"
+            >
+              {shortLink}
+            </a>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                navigator.clipboard.writeText(shortLink);
+                toast.success("Link copiado com sucesso!");
+              }}
+              className="h-6 w-6 rounded-md text-muted-foreground hover:text-itc-ciano hover:bg-itc-ciano/10 transition-colors"
+              title="Copiar link"
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
+          </div>
         );
       },
     },

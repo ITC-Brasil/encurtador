@@ -11,9 +11,11 @@ export async function GET() {
       ...doc.data(),
     }));
     return NextResponse.json(usersList, { status: 200 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("🔥 ERRO NO GET /api/usuarios:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : "Erro desconhecido";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -47,9 +49,11 @@ export async function POST(request: Request) {
       });
 
     return NextResponse.json({ message: "Usuário criado!" }, { status: 201 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("🔥 ERRO NO POST /api/usuarios:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : "Erro desconhecido";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -62,7 +66,8 @@ export async function PUT(request: Request) {
       return NextResponse.json({ error: "UID obrigatório." }, { status: 400 });
     }
 
-    const updateData: any = {};
+    // Tipagem correta ao invés de 'any'
+    const updateData: { role?: string; status?: string } = {};
     if (role) updateData.role = role;
     if (status) updateData.status = status;
 
@@ -80,9 +85,11 @@ export async function PUT(request: Request) {
       { message: "Usuário atualizado!" },
       { status: 200 },
     );
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("🔥 ERRO NO PUT /api/usuarios:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : "Erro desconhecido";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
 
@@ -102,14 +109,16 @@ export async function DELETE(request: Request) {
     // Tenta deletar do Auth (se falhar porque não existe no auth, segue viagem para limpar o Firestore)
     await adminAuth
       .deleteUser(uid)
-      .catch((err) => console.log("Aviso: Usuário não existia no Auth Engine"));
+      .catch(() => console.log("Aviso: Usuário não existia no Auth Engine"));
 
     // Deleta do Firestore
     await adminDb.collection("users").doc(uid).delete();
 
     return NextResponse.json({ message: "Usuário removido." }, { status: 200 });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("🔥 ERRO NO DELETE /api/usuarios:", error);
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    const errorMessage =
+      error instanceof Error ? error.message : "Erro desconhecido";
+    return NextResponse.json({ error: errorMessage }, { status: 500 });
   }
 }
