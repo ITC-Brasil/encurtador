@@ -1,10 +1,35 @@
 // src/app/api/usuarios/route.ts
 import { NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
+import { requireAdmin } from "@/lib/auth-guard"; // <-- Importação do nosso Guard
 
-// 1. LISTAR USUÁRIOS
-export async function GET() {
+// Função auxiliar para verificar se o usuário sendo alterado/deletado é o último Admin ativo do sistema
+async function isLastAdmin(targetUid: string): Promise<boolean> {
+  const snapshot = await adminDb
+    .collection("users")
+    .where("role", "==", "Administrador")
+    .where("status", "==", "Ativo")
+    .get();
+
+  // Se só houver 1 administrador ativo e o ID coincidir com o alvo, ele é o último
+  if (snapshot.size <= 1 && snapshot.docs.some((doc) => doc.id === targetUid)) {
+    return true;
+  }
+  return false;
+}
+
+// 1. LISTAR USUÁRIOS (Protegido)
+export async function GET(request: Request) {
   try {
+    // Barreira de Autenticação/Autorização
+    const authUser = await requireAdmin(request);
+    if (!authUser) {
+      return NextResponse.json(
+        { error: "Acesso não autorizado." },
+        { status: 401 },
+      );
+    }
+
     const snapshot = await adminDb.collection("users").get();
     const usersList = snapshot.docs.map((doc) => ({
       uid: doc.id,
@@ -19,9 +44,18 @@ export async function GET() {
   }
 }
 
-// 2. CRIAR NOVO COLABORADOR
+// 2. CRIAR NOVO COLABORADOR (Protegido)
 export async function POST(request: Request) {
   try {
+    // Barreira de Autenticação/Autorização
+    const authUser = await requireAdmin(request);
+    if (!authUser) {
+      return NextResponse.json(
+        { error: "Acesso não autorizado." },
+        { status: 401 },
+      );
+    }
+
     const { email, password, name, role } = await request.json();
 
     if (!email || !name) {
@@ -45,10 +79,13 @@ export async function POST(request: Request) {
         email,
         role: role || "Colaborador",
         status: "Ativo",
-        createdAt: new Date().toISOString(),
+        createdAt: new Date(),
       });
 
-    return NextResponse.json({ message: "Usuário criado!" }, { status: 201 });
+    return NextResponse.json(
+      { message: "Usuário criado com sucesso!" },
+      { status: 201 },
+    );
   } catch (error: unknown) {
     console.error("🔥 ERRO NO POST /api/usuarios:", error);
     const errorMessage =
@@ -57,24 +94,48 @@ export async function POST(request: Request) {
   }
 }
 
-// 3. MODIFICAR ATRIBUTOS
+// 3. ATUALIZAR STATUS OU PERMISSÃO (Protegido + Trava contra remover último Admin)
 export async function PUT(request: Request) {
   try {
+    // Barreira de Autenticação/Autorização
+    const authUser = await requireAdmin(request);
+    if (!authUser) {
+      return NextResponse.json(
+        { error: "Acesso não autorizado." },
+        { status: 401 },
+      );
+    }
+
     const { uid, role, status } = await request.json();
 
     if (!uid) {
-      return NextResponse.json({ error: "UID obrigatório." }, { status: 400 });
+      return NextResponse.json(
+        { error: "UID é obrigatório." },
+        { status: 400 },
+      );
     }
 
-    // Tipagem correta ao invés de 'any'
+    // Trava de segurança: impede rebaixar ou suspender o último administrador ativo
+    if (role !== "Administrador" || status === "Suspenso") {
+      const isLast = await isLastAdmin(uid);
+      if (isLast) {
+        return NextResponse.json(
+          {
+            error:
+              "Operação negada. O sistema precisa de pelo menos um Administrador ativo.",
+          },
+          { status: 400 },
+        );
+      }
+    }
+
+    // Tipagem explícita e segura aplicada para eliminar o erro de 'any' do ESLint
     const updateData: { role?: string; status?: string } = {};
     if (role) updateData.role = role;
     if (status) updateData.status = status;
 
-    // Atualiza o Firestore
     await adminDb.collection("users").doc(uid).update(updateData);
 
-    // Atualiza o Auth apenas se o status mudar
     if (status === "Suspenso") {
       await adminAuth.updateUser(uid, { disabled: true }).catch(() => null);
     } else if (status === "Ativo") {
@@ -82,7 +143,7 @@ export async function PUT(request: Request) {
     }
 
     return NextResponse.json(
-      { message: "Usuário atualizado!" },
+      { message: "Usuário atualizado com sucesso!" }, // Quick win do relatório aplicado: pt-br
       { status: 200 },
     );
   } catch (error: unknown) {
@@ -93,9 +154,18 @@ export async function PUT(request: Request) {
   }
 }
 
-// 4. DELETAR
+// 4. DELETAR COLABORADOR (Protegido + Trava contra deletar último Admin)
 export async function DELETE(request: Request) {
   try {
+    // Barreira de Autenticação/Autorização
+    const authUser = await requireAdmin(request);
+    if (!authUser) {
+      return NextResponse.json(
+        { error: "Acesso não autorizado." },
+        { status: 401 },
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const uid = searchParams.get("uid");
 
@@ -106,15 +176,28 @@ export async function DELETE(request: Request) {
       );
     }
 
-    // Tenta deletar do Auth (se falhar porque não existe no auth, segue viagem para limpar o Firestore)
+    // Trava de segurança: impede deletar o último administrador ativo
+    const isLast = await isLastAdmin(uid);
+    if (isLast) {
+      return NextResponse.json(
+        {
+          error:
+            "Operação negada. Não é possível deletar o último Administrador ativo do sistema.",
+        },
+        { status: 400 },
+      );
+    }
+
     await adminAuth
       .deleteUser(uid)
       .catch(() => console.log("Aviso: Usuário não existia no Auth Engine"));
 
-    // Deleta do Firestore
     await adminDb.collection("users").doc(uid).delete();
 
-    return NextResponse.json({ message: "Usuário removido." }, { status: 200 });
+    return NextResponse.json(
+      { message: "Usuário removido com sucesso!" },
+      { status: 200 },
+    );
   } catch (error: unknown) {
     console.error("🔥 ERRO NO DELETE /api/usuarios:", error);
     const errorMessage =
