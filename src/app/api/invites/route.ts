@@ -6,6 +6,9 @@ import { randomBytes } from "crypto";
 
 // 1. LISTAR CONVITES ENVIADOS (Protegido para Admin)
 export async function GET(request: Request) {
+  // DEBUG TEMPORÁRIO — remover após resolver
+  const authHeader = request.headers.get("Authorization");
+  console.log("🔍 AUTH HEADER:", authHeader?.substring(0, 40));
   try {
     const authUser = await requireAdmin(request);
     if (!authUser) {
@@ -45,8 +48,12 @@ export async function POST(request: Request) {
       );
     }
 
-    const { email, role } = await request.json();
+    // Leitura resiliente do corpo da requisição
+    const body = await request.json().catch(() => ({}));
+    const email = body.email ? String(body.email).trim().toLowerCase() : "";
+    const role = body.role ? String(body.role).trim() : "";
 
+    // Validação explícita pós-tratamento de strings
     if (!email || !role) {
       return NextResponse.json(
         { error: "E-mail e nível de permissão são obrigatórios." },
@@ -57,18 +64,18 @@ export async function POST(request: Request) {
     // Verifica se o e-mail já possui um convite pendente ativo
     const existingInvite = await adminDb
       .collection("invites")
-      .where("email", "==", email.trim().toLowerCase())
+      .where("email", "==", email)
       .where("status", "==", "Pendente")
       .get();
 
     if (!existingInvite.empty) {
       return NextResponse.json(
-        { error: "Já existe un convite pendente para este e-mail." },
+        { error: "Já existe um convite pendente para este e-mail." },
         { status: 400 },
       );
     }
 
-    // Gera um token criptográfico seguro e único de 32 caracteres
+    // Gera um token criptográfico seguro e único de 32 caracteres hexadecimais
     const token = randomBytes(16).toString("hex");
 
     // Define expiração padrão para 7 dias a partir de hoje
@@ -76,7 +83,7 @@ export async function POST(request: Request) {
     expiresAt.setDate(expiresAt.getDate() + 7);
 
     const invitePayload = {
-      email: email.trim().toLowerCase(),
+      email,
       role,
       token,
       status: "Pendente",
@@ -85,13 +92,13 @@ export async function POST(request: Request) {
       expiresAt: expiresAt,
     };
 
-    // Salva o convite usando o token como ID do documento para busca instantânea posterior
+    // Salva o convite usando o token como ID único do documento
     await adminDb.collection("invites").doc(token).set(invitePayload);
 
     return NextResponse.json(
       {
         message: "Convite gerado com sucesso!",
-        inviteLink: `https://itcbr.xyz/register?token=${token}`,
+        inviteLink: `http://localhost:3000/register?token=${token}`,
       },
       { status: 201 },
     );

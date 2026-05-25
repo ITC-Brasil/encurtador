@@ -5,7 +5,6 @@ import { useState } from "react";
 import { auth } from "@/lib/firebase";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { DialogFooter } from "@/components/ui/dialog";
 import {
   Select,
   SelectContent,
@@ -27,16 +26,16 @@ export function InviteMemberForm({
 }: InviteMemberFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [email, setEmail] = useState("");
-  const [role, setRole] = useState<"Administrador" | "Colaborador">(
-    "Colaborador",
-  );
+  const [role, setRole] = useState<string>("Colaborador");
   const [generatedLink, setGeneratedLink] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
 
   const handleCreateInvite = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email.trim())
-      return toast.error("O e-mail corporativo é obrigatório.");
+    if (!email.trim()) {
+      toast.error("O e-mail corporativo é obrigatório.");
+      return;
+    }
 
     setSubmitting(true);
     try {
@@ -46,7 +45,6 @@ export function InviteMemberForm({
         return;
       }
 
-      // Obtém o Token Bearer JWT para validação no requireAdmin do back-end
       const token = await currentUser.getIdToken();
 
       const res = await fetch("/api/invites", {
@@ -61,14 +59,19 @@ export function InviteMemberForm({
         }),
       });
 
-      const data = await res.json();
+      let data;
+      try {
+        data = await res.json();
+      } catch {
+        data = null;
+      }
 
       if (!res.ok) {
-        throw new Error(data.error || "Falha ao gerar convite.");
+        throw new Error(data?.error || "Falha ao gerar convite corporativo.");
       }
 
       toast.success("Convite corporativo gerado!");
-      setGeneratedLink(data.inviteLink);
+      setGeneratedLink(data?.inviteLink || null);
       onSuccess();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro operacional.";
@@ -82,22 +85,19 @@ export function InviteMemberForm({
     if (!generatedLink) return;
     navigator.clipboard.writeText(generatedLink);
     setCopied(true);
-    toast.success("Link de convite copiado para a área de transferência!");
+    toast.success("Link copiado para a área de transferência!");
     setTimeout(() => setCopied(false), 2000);
   };
 
-  // Se o link já foi gerado com sucesso, exibe a tela de sucesso com o link para cópia
   if (generatedLink) {
     return (
       <div className="space-y-4 py-4 font-sans">
         <div className="p-4 bg-itc-ciano/10 rounded-lg border border-itc-ciano/20 text-center space-y-2">
           <Link2 className="h-8 w-8 text-itc-ciano mx-auto" />
-          <h3 className="text-sm font-bold text-foreground">
-            Convite Pronto para Envio!
-          </h3>
+          <h3 className="text-sm font-bold text-foreground">Convite Pronto!</h3>
           <p className="text-xs text-muted-foreground">
-            Envie o link exclusivo abaixo para o colaborador. Ele poderá
-            registrar suas credenciais corporativas com segurança.
+            Envie o link exclusivo abaixo para o colaborador associar seu Google
+            Auth.
           </p>
         </div>
 
@@ -125,15 +125,15 @@ export function InviteMemberForm({
           </div>
         </div>
 
-        <DialogFooter className="pt-4 border-t border-border">
+        <div className="flex justify-end pt-4 border-t border-border">
           <Button
             type="button"
             onClick={onCancel}
-            className="w-full border-border text-foreground hover:bg-accent font-sans text-xs h-9"
+            className="w-full bg-secondary hover:bg-secondary/80 text-secondary-foreground font-sans text-xs font-medium h-9"
           >
             Fechar Painel
           </Button>
-        </DialogFooter>
+        </div>
       </div>
     );
   }
@@ -160,18 +160,13 @@ export function InviteMemberForm({
             <ShieldCheck className="h-3.5 w-3.5 text-itc-ciano" /> Atribuição de
             Acesso (Role)
           </label>
-          <Select
-            value={role}
-            onValueChange={(value: "Administrador" | "Colaborador") =>
-              setRole(value)
-            }
-          >
-            <SelectTrigger className="h-9 text-sm border-input bg-transparent text-foreground">
+          <Select value={role} onValueChange={(value) => setRole(value)}>
+            <SelectTrigger className="h-9 text-sm border-input bg-transparent text-foreground w-full">
               <SelectValue placeholder="Selecione a permissão" />
             </SelectTrigger>
             <SelectContent className="bg-card border-border text-foreground">
               <SelectItem value="Colaborador" className="text-xs font-sans">
-                Colaborador (Gera/audita apenas links próprios)
+                Colaborador (Gera/audita links próprios)
               </SelectItem>
               <SelectItem value="Administrador" className="text-xs font-sans">
                 Administrador (Controle irrestrito global)
@@ -181,7 +176,7 @@ export function InviteMemberForm({
         </div>
       </div>
 
-      <DialogFooter className="gap-2 sm:gap-0 border-t border-border pt-4">
+      <div className="flex flex-col sm:flex-row justify-end gap-2 border-t border-border pt-4">
         <Button
           type="button"
           variant="outline"
@@ -198,7 +193,7 @@ export function InviteMemberForm({
         >
           {submitting ? "Gerando Token..." : "Enviar Convite Oficial"}
         </Button>
-      </DialogFooter>
+      </div>
     </form>
   );
 }

@@ -74,11 +74,12 @@ export default function GestaoUsuariosPage() {
   const cardHoverClass =
     "transition-all duration-300 hover:shadow-md hover:border-itc-ciano/30";
 
-  const fetchColaboradores = async () => {
+  const fetchColaboradores = async (
+    firebaseUser?: import("firebase/auth").User | null,
+  ) => {
     try {
-      const currentUser = auth.currentUser;
+      const currentUser = firebaseUser ?? auth.currentUser;
       if (!currentUser) return;
-
       const token = await currentUser.getIdToken();
 
       const res = await fetch("/api/usuarios", {
@@ -105,7 +106,7 @@ export default function GestaoUsuariosPage() {
         return;
       }
       setCurrentAdminEmail(user.email);
-      fetchColaboradores();
+      fetchColaboradores(user);
     });
     return () => unsubscribe();
   }, [router]);
