@@ -32,6 +32,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   Link2,
   MousePointerClick,
   CheckCircle,
@@ -39,6 +47,7 @@ import {
   ArrowUpDown,
   Trash2,
   Copy,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
 
@@ -79,6 +88,9 @@ export default function DashboardPage() {
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState({});
   const [isDeleting, setIsDeleting] = useState(false);
+
+  // Estado para controlar o Modal Customizado de Deleção
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
@@ -136,19 +148,16 @@ export default function DashboardPage() {
     }
   };
 
-  const handleDeleteSelected = async () => {
+  // Aciona o Modal do Shadcn em vez do confirm do navegador
+  const handleOpenDeleteDialog = () => {
+    setIsConfirmDialogOpen(true);
+  };
+
+  const handleConfirmDeleteSelected = async () => {
     const selectedIds = table
       .getFilteredSelectedRowModel()
       .rows.map((row) => row.original.id);
     if (selectedIds.length === 0) return;
-
-    if (
-      !confirm(
-        `Tem certeza que deseja excluir ${selectedIds.length} link(s)? Essa ação não pode ser desfeita.`,
-      )
-    ) {
-      return;
-    }
 
     setIsDeleting(true);
     try {
@@ -157,6 +166,7 @@ export default function DashboardPage() {
       );
       toast.success(`${selectedIds.length} link(s) excluído(s) com sucesso.`);
       setRowSelection({});
+      setIsConfirmDialogOpen(false);
       fetchDashboardData(user!.uid);
     } catch (error) {
       console.error("Erro ao deletar links:", error);
@@ -290,7 +300,6 @@ export default function DashboardPage() {
     },
   ];
 
-  // Correção do ESLint: Ignorando o aviso incompatível do React Compiler com o TanStack Table
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: links,
@@ -314,9 +323,11 @@ export default function DashboardPage() {
     );
   }
 
+  const selectedCount = Object.keys(rowSelection).length;
+
   return (
     <div className="flex-1 space-y-8 p-8 max-w-7xl mx-auto w-full font-sans transition-colors duration-300">
-      {/* Grid de Cards de Métricas com Efeito de Hover e Movimento */}
+      {/* Grid de Cards de Métricas */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="bg-card border-border shadow-sm text-card-foreground transition-all duration-300 hover:shadow-md hover:border-itc-ciano/40 hover:-translate-y-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -382,18 +393,18 @@ export default function DashboardPage() {
             </CardDescription>
           </div>
 
-          {Object.keys(rowSelection).length > 0 && (
+          {selectedCount > 0 && (
             <Button
               variant="destructive"
               size="sm"
-              onClick={handleDeleteSelected}
+              onClick={handleOpenDeleteDialog}
               disabled={isDeleting}
               className="font-sans gap-2"
             >
               <Trash2 className="h-4 w-4" />
               {isDeleting
                 ? "Excluindo..."
-                : `Excluir ${Object.keys(rowSelection).length} selecionado(s)`}
+                : `Excluir ${selectedCount} selecionado(s)`}
             </Button>
           )}
         </CardHeader>
@@ -496,6 +507,44 @@ export default function DashboardPage() {
           )}
         </CardContent>
       </Card>
+
+      {/* Dialog Customizado Substituindo o window.confirm de Lote */}
+      <Dialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+        <DialogContent className="border-border bg-card font-sans max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground font-bold text-base font-sans">
+              <AlertTriangle className="h-5 w-5 text-itc-erro shrink-0" />
+              Excluir Links Selecionados?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1 leading-relaxed">
+              Você está prestes a excluir permanentemente{" "}
+              <span className="font-semibold text-foreground">
+                {selectedCount} link(s)
+              </span>
+              . Esta ação removerá todos os dados de rastreamento, logs de
+              clique e QR Codes associados a esses encurtadores. Não será
+              possível reverter essa operação.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0 border-t border-border pt-4 mt-2">
+            <Button
+              variant="outline"
+              disabled={isDeleting}
+              onClick={() => setIsConfirmDialogOpen(false)}
+              className="border-border text-foreground text-xs h-8"
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={isDeleting}
+              onClick={handleConfirmDeleteSelected}
+              className="bg-itc-erro hover:bg-red-600 text-white font-medium text-xs h-8"
+            >
+              {isDeleting ? "Excluindo..." : "Confirmar Exclusão"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
