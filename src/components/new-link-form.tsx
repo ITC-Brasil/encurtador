@@ -3,9 +3,8 @@
 
 import { useState } from "react";
 import { db } from "@/lib/firebase";
-import { collection, query, where, getDocs, addDoc } from "firebase/firestore";
-import { Timestamp } from "firebase/firestore"; // <-- Importação do Timestamp
-import bcrypt from "bcryptjs"; // <-- Importação do Bcrypt
+import { doc, setDoc, Timestamp } from "firebase/firestore"; // <-- Importando doc e setDoc
+import bcrypt from "bcryptjs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
@@ -28,7 +27,6 @@ export function NewLinkForm({ userId, onSuccess, onCancel }: NewLinkFormProps) {
   const [password, setPassword] = useState("");
 
   const generateRandomSlug = () => {
-    // Quick win aplicado: Apenas letras minúsculas e números
     const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
     let result = "";
     for (let i = 0; i < 6; i++) {
@@ -51,20 +49,9 @@ export function NewLinkForm({ userId, onSuccess, onCancel }: NewLinkFormProps) {
         .replace(/[^a-z0-9_-]/g, "");
       if (!finalSlug) finalSlug = generateRandomSlug();
 
-      const linksRef = collection(db, "links");
-      const q = query(linksRef, where("slug", "==", finalSlug));
-      const snapshot = await getDocs(q);
-
-      if (!snapshot.empty) {
-        toast.error("Slug em uso.");
-        setSubmitting(false);
-        return;
-      }
-
       // Hash da senha (se existir) com 10 rounds de salt
       const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
-      // Tipagem correta usando Timestamp nativo do Firestore
       const linkPayload = {
         title: title.trim() || "Link Sem Título",
         originalUrl: originalUrl.trim(),
@@ -78,12 +65,31 @@ export function NewLinkForm({ userId, onSuccess, onCancel }: NewLinkFormProps) {
         passwordHash: hashedPassword,
       };
 
-      await addDoc(collection(db, "links"), linkPayload);
+      // --- SOLUÇÃO CONTRA RACE CONDITION (ATOMICIDADE NATIVA) ---
+      // Definimos o ID do documento explicitamente como o slug gerado/escolhido
+      const slugRef = doc(db, "links", finalSlug);
 
-      toast.success("Link criado com sucesso!");
-      onSuccess();
+      try {
+        // Usa a atomicidade do Firestore definindo o slug como Document ID
+        await setDoc(slugRef, linkPayload, { merge: false });
+
+        toast.success("Link criado com sucesso!");
+        onSuccess();
+      } catch (error: unknown) {
+        const firebaseError = error as { code?: string };
+
+        if (
+          firebaseError?.code === "permission-denied" ||
+          firebaseError?.code === "already-exists"
+        ) {
+          toast.error("Este slug já está em uso.");
+          return;
+        }
+        throw error;
+      }
     } catch {
       toast.error("Erro ao criar link.");
+    } finally {
       setSubmitting(false);
     }
   };
