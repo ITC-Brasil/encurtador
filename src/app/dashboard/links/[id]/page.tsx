@@ -13,13 +13,7 @@ import {
   Timestamp,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
-import {
-  Card,
-  CardContent,
-  CardHeader,
-  CardTitle,
-  CardDescription,
-} from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -31,7 +25,6 @@ import {
   ExternalLink,
   QrCode as QrIcon,
   BarChart3,
-  Clock,
   Link2,
   ShieldAlert,
   Edit,
@@ -41,6 +34,9 @@ import {
   Sliders,
   Tag,
   Loader2,
+  History,
+  Calendar,
+  User,
 } from "lucide-react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
@@ -69,6 +65,8 @@ interface LinkDetail {
   expiresAt?: Timestamp | string | null;
   maxClicks?: number | string;
   passwordHash?: string;
+  createdByName?: string;
+  updatedByName?: string;
 }
 
 interface ChartDataPoint {
@@ -300,98 +298,169 @@ export default function LinkDetailsPage({
   };
 
   return (
-    <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-4">
+    <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
       <Button
         variant="ghost"
         onClick={() => router.push("/dashboard")}
-        className="text-muted-foreground gap-2 pl-0 hover:bg-transparent font-sans text-xs w-max mb-2"
+        className="text-muted-foreground gap-2 pl-0 hover:bg-transparent font-sans text-xs w-max"
       >
         <ArrowLeft className="h-4 w-4" /> Voltar ao Painel
       </Button>
 
-      <Card className={`bg-card border-border shadow-sm ${cardHoverClass}`}>
-        <CardHeader className="pb-2">
-          <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-            <Tag className="h-3.5 w-3.5 text-itc-ciano" /> Título do Link
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="pb-5">
-          <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground font-sans break-all">
-              {linkData.title || "Link Sem Título"}
-            </h1>
-            <div className="flex items-center gap-2 pt-1">
-              <Badge
-                className={`border-none text-[10px] font-bold px-2.5 py-0.5 rounded ${
-                  linkData.isActive
-                    ? "bg-itc-sucesso/10 text-itc-sucesso"
-                    : "bg-itc-erro/10 text-itc-erro"
-                }`}
-              >
-                {linkData.isActive ? "Ativo" : "Desativado"}
-              </Badge>
-              {linkData.passwordHash && (
-                <Badge
-                  variant="outline"
-                  className="text-amber-500 border-amber-500/30 flex items-center gap-1 bg-amber-500/10 text-[10px] px-2 py-0.5"
-                >
-                  <ShieldAlert className="h-3 w-3" /> Protegido por Senha
-                </Badge>
+      {/* BLOCO SUPERIOR: Identidade e Auditoria */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
+        {/* LADO ESQUERDO (2 Colunas): Dados de Identificação */}
+        <div className="lg:col-span-2 flex flex-col gap-4 justify-between">
+          <Card
+            className={`bg-card border-border shadow-sm flex flex-col justify-center flex-1 ${cardHoverClass}`}
+          >
+            <CardHeader className="pb-3 pt-5 border-b border-border/40">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5 font-sans">
+                <Tag className="h-3.5 w-3.5" /> Painel de Controle Operacional
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="pt-5 pb-5">
+              <div className="space-y-2">
+                <h1 className="text-3xl font-bold tracking-tight text-foreground font-sans break-all">
+                  {linkData.title || "Link Sem Título"}
+                </h1>
+
+                <div className="flex flex-wrap items-center justify-between gap-4 pt-4 mt-2">
+                  <div className="flex items-center gap-2">
+                    <Badge
+                      className={`border-none text-[10px] font-bold px-2.5 py-0.5 rounded ${
+                        linkData.isActive
+                          ? "bg-itc-sucesso/10 text-itc-sucesso"
+                          : "bg-itc-erro/10 text-itc-erro"
+                      }`}
+                    >
+                      {linkData.isActive ? "Ativo" : "Desativado"}
+                    </Badge>
+                    {linkData.passwordHash && (
+                      <Badge
+                        variant="outline"
+                        className="text-amber-500 border-amber-500/30 flex items-center gap-1 bg-amber-500/10 text-[10px] px-2 py-0.5"
+                      >
+                        <ShieldAlert className="h-3 w-3" /> Senha Ativa
+                      </Badge>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-sm font-sans">
+                    <span className="text-itc-ciano font-bold text-xs uppercase tracking-wider">
+                      Volume de Tráfego:
+                    </span>
+                    <span className="text-foreground font-bold text-base bg-accent/40 px-3 py-0.5 rounded-md border border-border/40">
+                      {linkData.clickCount || 0}{" "}
+                      <span className="text-xs font-normal text-muted-foreground">
+                        cliques
+                      </span>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+
+        {/* LADO DIREITO (1 Coluna Esticada): Cronologia e Auditoria */}
+        <Card
+          className={`lg:col-span-1 bg-card border-border shadow-sm flex flex-col justify-between ${cardHoverClass}`}
+        >
+          <CardHeader className="pb-3 pt-5 border-b border-border/40">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5 font-sans">
+              <History className="h-3.5 w-3.5" /> Histórico & Cronologia
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-5 pb-5 flex-1 flex flex-col justify-center">
+            <div className="space-y-4 w-full">
+              <div className="flex items-start gap-3">
+                <div className="p-1.5 bg-itc-ciano/10 text-itc-ciano rounded-md mt-0.5">
+                  <User className="h-3.5 w-3.5" />
+                </div>
+                <div className="space-y-0.5 font-sans">
+                  <span className="text-[10px] text-muted-foreground uppercase font-medium block tracking-wider">
+                    Criação do Link
+                  </span>
+                  <span className="text-sm font-bold text-foreground block">
+                    {linkData.createdByName || "Colaborador"}
+                  </span>
+                  <span className="text-xs text-muted-foreground font-medium flex items-center gap-1">
+                    <Calendar className="h-3 w-3" />{" "}
+                    {formatarDataSegura(linkData.createdAt)}
+                  </span>
+                </div>
+              </div>
+
+              {linkData.updatedByName && (
+                <div className="flex items-start gap-3 border-t border-border/40 pt-3">
+                  <div className="p-1.5 bg-amber-500/10 text-amber-500 rounded-md mt-0.5">
+                    <Edit className="h-3.5 w-3.5" />
+                  </div>
+                  <div className="space-y-0.5 font-sans">
+                    <span className="text-[10px] text-amber-500 uppercase font-medium block tracking-wider">
+                      Última Modificação
+                    </span>
+                    <span className="text-sm font-bold text-foreground block">
+                      {linkData.updatedByName}
+                    </span>
+                    <span className="text-xs text-muted-foreground font-medium">
+                      Alterações operacionais recentes
+                    </span>
+                  </div>
+                </div>
               )}
             </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* LINHA DIVISORA: Destino Original com Separador Perfeito */}
+      <Card
+        className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
+      >
+        <CardHeader className="pb-3 pt-4 border-b border-border/40">
+          <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5 font-sans">
+            <Link2 className="h-3.5 w-3.5" /> Destino Corporativo Original
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pt-4 pb-4">
+          <div className="flex items-center justify-between gap-4 font-sans">
+            <a
+              href={linkData.originalUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-sm text-foreground font-sans hover:text-itc-ciano font-medium truncate flex-1 block"
+              title={linkData.originalUrl}
+            >
+              {linkData.originalUrl}
+            </a>
+            <ExternalLink className="h-4 w-4 text-muted-foreground shrink-0" />
           </div>
         </CardContent>
       </Card>
 
+      {/* GRID INFERIOR: Telemetria e Controles */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-        {/* ================= COLUNA ESQUERDA ================= */}
+        {/* Coluna de Controles e QR */}
         <div className="lg:col-span-1 flex flex-col gap-6">
-          {/* TRAVA GEOMÉTRICA 1: Altura fixa h-28 */}
+          {/* CARD 1: Ações Operacionais */}
           <Card
-            className={`bg-card border-border shadow-sm flex flex-col shrink-0 h-28 ${cardHoverClass}`}
+            className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
           >
-            <CardHeader className="pb-0 pt-4">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Link2 className="h-3.5 w-3.5 text-itc-ciano" /> Destino
-                Original
+            <CardHeader className="pb-3 pt-4 border-b border-border/40">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5 font-sans">
+                <Sliders className="h-3.5 w-3.5" /> Ações Operacionais
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col justify-center pb-4">
-              <div className="flex items-center gap-1.5 w-full">
-                <a
-                  href={linkData.originalUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm text-foreground font-sans hover:text-itc-ciano font-medium truncate flex-1 min-w-0"
-                  title={linkData.originalUrl}
-                >
-                  {linkData.originalUrl}
-                </a>
-                <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card
-            className={`bg-card border-border shadow-sm flex flex-col shrink-0 ${cardHoverClass}`}
-          >
-            <CardHeader className="pb-2 pt-4">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <Sliders className="h-3.5 w-3.5 text-itc-ciano" /> Controle do
-                Link
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="flex-1 flex flex-col justify-center space-y-3 pb-4">
-              <p className="text-xs text-muted-foreground font-sans">
-                Modifique os parâmetros operacionais.
-              </p>
+            <CardContent className="pt-4 pb-4">
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant="outline"
                   onClick={() => setIsEditOpen(true)}
                   className="w-full gap-2 font-sans border-border text-xs h-8"
                 >
-                  <Edit className="h-3.5 w-3.5 text-itc-ciano" /> Editar Configs
+                  <Edit className="h-3.5 w-3.5 text-itc-ciano" /> Configurações
                 </Button>
                 <Button
                   variant={linkData.isActive ? "destructive" : "default"}
@@ -404,17 +473,17 @@ export default function LinkDetailsPage({
             </CardContent>
           </Card>
 
+          {/* CARD 2: QR Code Corporativo */}
           <Card
             className={`bg-card border-border shadow-sm flex flex-col flex-1 ${cardHoverClass}`}
           >
-            <CardHeader className="pb-2 pt-4">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
-                <QrIcon className="h-3.5 w-3.5 text-itc-ciano" /> QR Code
-                Corporativo
+            <CardHeader className="pb-3 pt-4 border-b border-border/40">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5 font-sans">
+                <QrIcon className="h-3.5 w-3.5" /> QR Code Corporativo
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col items-center justify-center pb-6 px-6">
-              <div className="bg-white p-3 rounded-xl shadow-inner border border-border mt-2">
+            <CardContent className="flex-1 flex flex-col items-center justify-center pb-6 pt-5 px-6">
+              <div className="bg-white p-3 rounded-xl shadow-inner border border-border">
                 <QRCodeSVG
                   id="qr-code-svg"
                   value={fullShortUrl}
@@ -451,57 +520,19 @@ export default function LinkDetailsPage({
           </Card>
         </div>
 
-        {/* ================= COLUNA DIREITA ================= */}
+        {/* Coluna dos Gráficos */}
         <div className="lg:col-span-2 flex flex-col gap-6">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
-            {/* TRAVA GEOMÉTRICA 1: Altura fixa h-28 */}
-            <Card
-              className={`bg-card border-border shadow-sm flex flex-col h-28 ${cardHoverClass}`}
-            >
-              <CardHeader className="pb-0 pt-4 flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
-                  <BarChart3 className="h-3.5 w-3.5 text-itc-ciano" /> Cliques
-                  Acumulados
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-center pb-4">
-                <div className="text-2xl font-bold font-sans text-foreground">
-                  {linkData.clickCount || 0}
-                </div>
-              </CardContent>
-            </Card>
-
-            {/* TRAVA GEOMÉTRICA 1: Altura fixa h-28 */}
-            <Card
-              className={`bg-card border-border shadow-sm flex flex-col h-28 ${cardHoverClass}`}
-            >
-              <CardHeader className="pb-0 pt-4 flex flex-row items-center justify-between space-y-0">
-                <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
-                  <Clock className="h-3.5 w-3.5 text-itc-ciano" /> Data de
-                  Criação
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-center pb-4">
-                <div className="text-sm font-semibold font-sans text-foreground">
-                  {formatarDataSegura(linkData.createdAt)}
-                </div>
-              </CardContent>
-            </Card>
-          </div>
-
+          {/* CARD 3: Histórico de Acessos */}
           <Card
             className={`bg-card border-border shadow-sm shrink-0 ${cardHoverClass}`}
           >
-            <CardHeader className="pb-2 pt-4">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
+            <CardHeader className="pb-3 pt-4 border-b border-border/40">
+              <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5 font-sans">
                 <Activity className="h-4 w-4 text-itc-ciano" /> Histórico de
                 Acessos
               </CardTitle>
-              <CardDescription className="font-sans text-xs text-muted-foreground">
-                Volume de cliques distribuído por dia
-              </CardDescription>
             </CardHeader>
-            <CardContent className="pt-2 pb-6">
+            <CardContent className="pt-5 pb-6">
               {chartData.length > 0 ? (
                 <div className="h-40 w-full">
                   <ResponsiveContainer
@@ -571,18 +602,18 @@ export default function LinkDetailsPage({
             </CardContent>
           </Card>
 
+          {/* Região e Dispositivos */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 items-stretch">
-            {/* TRAVA GEOMÉTRICA 3: h-full para esticar até o fim da coluna */}
+            {/* CARD 4: Localização */}
             <Card
               className={`bg-card border-border shadow-sm flex flex-col h-full overflow-hidden ${cardHoverClass}`}
             >
-              <CardHeader className="pb-2 pt-4">
-                <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
-                  <MapPin className="h-3.5 w-3.5 text-itc-ciano" /> Localização
-                  (Top Cidades)
+              <CardHeader className="pb-3 pt-4 border-b border-border/40">
+                <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-itc-ciano">
+                  <MapPin className="h-3.5 w-3.5" /> Localização (Top Cidades)
                 </CardTitle>
               </CardHeader>
-              <CardContent className="flex-1 overflow-y-auto pt-2 pb-4">
+              <CardContent className="flex-1 overflow-y-auto pt-4 pb-4">
                 {topCities.length > 0 ? (
                   <div className="space-y-2.5">
                     {topCities.map((city, index) => (
@@ -609,24 +640,23 @@ export default function LinkDetailsPage({
                     ))}
                   </div>
                 ) : (
-                  <p className="text-xs text-muted-foreground font-sans italic pt-2">
+                  <p className="text-xs text-muted-foreground font-sans italic">
                     Nenhuma cidade registrada.
                   </p>
                 )}
               </CardContent>
             </Card>
 
-            {/* TRAVA GEOMÉTRICA 3: h-full para esticar até o fim da coluna */}
+            {/* CARD 5: Plataforma de Acesso */}
             <Card
               className={`bg-card border-border shadow-sm flex flex-col h-full ${cardHoverClass}`}
             >
-              <CardHeader className="pb-2 pt-4">
-                <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
-                  <Smartphone className="h-3.5 w-3.5 text-itc-ciano" />{" "}
-                  Plataforma de Acesso
+              <CardHeader className="pb-3 pt-4 border-b border-border/40">
+                <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-itc-ciano">
+                  <Smartphone className="h-3.5 w-3.5" /> Plataforma de Acesso
                 </CardTitle>
               </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-center space-y-3 pt-2 pb-4">
+              <CardContent className="flex-1 flex flex-col justify-center space-y-3 pt-4 pb-4">
                 {deviceData.length > 0 ? (
                   deviceData.map((device, index) => (
                     <div key={index} className="space-y-1 font-sans">
