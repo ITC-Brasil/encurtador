@@ -147,7 +147,6 @@ export default function LinkDetailsPage({
         const data = docSnap.data();
         setLinkData({ id: docSnap.id, ...data } as LinkDetail);
 
-        // Busca todos os cliques na subcoleção do link específico
         const clicksRef = collection(db, "links", resolvedParams.id, "clicks");
         const clicksSnap = await getDocs(clicksRef);
 
@@ -345,19 +344,18 @@ export default function LinkDetailsPage({
       </Card>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-        {/* COLUNA ESQUERDA (OPERACIONAL) */}
+        {/* ================= COLUNA ESQUERDA ================= */}
         <div className="lg:col-span-1 flex flex-col gap-6">
-          {/* Card Destino Original Corrigido (Sem overflow-hidden apertado, usando flex e truncate) */}
           <Card
-            className={`bg-card border-border shadow-sm flex flex-col justify-center shrink-0 ${cardHoverClass}`}
+            className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
           >
-            <CardHeader className="pb-1 pt-4">
+            <CardHeader className="pb-2">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Link2 className="h-3.5 w-3.5 text-itc-ciano" /> Destino
                 Original
               </CardTitle>
             </CardHeader>
-            <CardContent className="pb-4">
+            <CardContent className="flex-1 flex flex-col justify-center">
               <div className="flex items-center gap-1.5 w-full">
                 <a
                   href={linkData.originalUrl}
@@ -374,15 +372,15 @@ export default function LinkDetailsPage({
           </Card>
 
           <Card
-            className={`bg-card border-border shadow-sm flex flex-col justify-center shrink-0 ${cardHoverClass}`}
+            className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
           >
-            <CardHeader className="pb-1 pt-4">
+            <CardHeader className="pb-2">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Sliders className="h-3.5 w-3.5 text-itc-ciano" /> Controle do
                 Link
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 pb-4">
+            <CardContent className="flex-1 flex flex-col justify-center space-y-3">
               <p className="text-xs text-muted-foreground font-sans">
                 Modifique os parâmetros operacionais.
               </p>
@@ -406,16 +404,16 @@ export default function LinkDetailsPage({
           </Card>
 
           <Card
-            className={`bg-card border-border shadow-sm flex flex-col justify-between flex-1 min-h-80 ${cardHoverClass}`}
+            className={`bg-card border-border shadow-sm flex flex-col flex-1 ${cardHoverClass}`}
           >
-            <CardHeader className="pb-2 pt-4">
+            <CardHeader className="pb-2">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <QrIcon className="h-3.5 w-3.5 text-itc-ciano" /> QR Code
                 Corporativo
               </CardTitle>
             </CardHeader>
-            <CardContent className="pt-0 pb-5 px-6 flex flex-col items-center flex-1 justify-between">
-              <div className="bg-white p-3 rounded-xl shadow-inner border border-border">
+            <CardContent className="flex-1 flex flex-col items-center justify-between pb-6 px-6">
+              <div className="bg-white p-3 rounded-xl shadow-inner border border-border mt-2">
                 <QRCodeSVG
                   id="qr-code-svg"
                   value={fullShortUrl}
@@ -425,7 +423,7 @@ export default function LinkDetailsPage({
                   bgColor="#ffffff"
                 />
               </div>
-              <div className="w-full space-y-3 mt-2">
+              <div className="w-full space-y-3 mt-4">
                 <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border border-border">
                   <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
                   <span className="text-xs font-sans text-foreground truncate flex-1 select-all">
@@ -452,20 +450,19 @@ export default function LinkDetailsPage({
           </Card>
         </div>
 
-        {/* COLUNA DIREITA (ANALYTICS) */}
+        {/* ================= COLUNA DIREITA ================= */}
         <div className="lg:col-span-2 flex flex-col gap-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
-            {/* Card Cliques Acumulados Corrigido: Tamanho 2xl, limpo, sem bg e font-sans pura */}
             <Card
-              className={`bg-card border-border shadow-sm flex flex-col justify-center ${cardHoverClass}`}
+              className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
             >
-              <CardHeader className="pb-1 pt-4 flex flex-row items-center justify-between space-y-0">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
                   <BarChart3 className="h-3.5 w-3.5 text-itc-ciano" /> Cliques
                   Acumulados
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pb-4">
+              <CardContent className="flex-1 flex flex-col justify-center">
                 <div className="text-2xl font-bold font-sans text-foreground">
                   {linkData.clickCount || 0}
                 </div>
@@ -473,15 +470,15 @@ export default function LinkDetailsPage({
             </Card>
 
             <Card
-              className={`bg-card border-border shadow-sm flex flex-col justify-center ${cardHoverClass}`}
+              className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
             >
-              <CardHeader className="pb-1 pt-4 flex flex-row items-center justify-between space-y-0">
+              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5 text-itc-ciano" /> Data de
                   Criação
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pb-4">
+              <CardContent className="flex-1 flex flex-col justify-center">
                 <div className="text-sm font-semibold font-sans text-foreground">
                   {formatarDataSegura(linkData.createdAt)}
                 </div>
@@ -490,9 +487,9 @@ export default function LinkDetailsPage({
           </div>
 
           <Card
-            className={`bg-card border-border shadow-sm shrink-0 ${cardHoverClass}`}
+            className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
           >
-            <CardHeader className="pb-2 pt-4">
+            <CardHeader className="pb-2">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Activity className="h-4 w-4 text-itc-ciano" /> Histórico de
                 Acessos
@@ -501,7 +498,7 @@ export default function LinkDetailsPage({
                 Volume de cliques distribuído por dia
               </CardDescription>
             </CardHeader>
-            <CardContent className="pt-4 pb-4">
+            <CardContent className="flex-1 pt-2 pb-6">
               {chartData.length > 0 ? (
                 <div className="h-40 w-full">
                   <ResponsiveContainer
@@ -573,15 +570,15 @@ export default function LinkDetailsPage({
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 items-stretch">
             <Card
-              className={`bg-card border-border shadow-sm flex flex-col h-full overflow-hidden ${cardHoverClass}`}
+              className={`bg-card border-border shadow-sm flex flex-col flex-1 overflow-hidden ${cardHoverClass}`}
             >
-              <CardHeader className="pb-2 pt-4">
+              <CardHeader className="pb-2">
                 <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
                   <MapPin className="h-3.5 w-3.5 text-itc-ciano" /> Localização
                   (Top Cidades)
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pt-1 pb-4 flex-1 overflow-y-auto">
+              <CardContent className="flex-1 overflow-y-auto">
                 {topCities.length > 0 ? (
                   <div className="space-y-2.5">
                     {topCities.map((city, index) => (
@@ -616,15 +613,15 @@ export default function LinkDetailsPage({
             </Card>
 
             <Card
-              className={`bg-card border-border shadow-sm flex flex-col h-full justify-between ${cardHoverClass}`}
+              className={`bg-card border-border shadow-sm flex flex-col flex-1 ${cardHoverClass}`}
             >
-              <CardHeader className="pb-2 pt-4">
+              <CardHeader className="pb-2">
                 <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
                   <Smartphone className="h-3.5 w-3.5 text-itc-ciano" />{" "}
                   Plataforma de Acesso
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pt-1 pb-4 flex flex-col justify-center flex-1 space-y-3">
+              <CardContent className="flex-1 flex flex-col justify-center space-y-3 pb-6">
                 {deviceData.length > 0 ? (
                   deviceData.map((device, index) => (
                     <div key={index} className="space-y-1 font-sans">

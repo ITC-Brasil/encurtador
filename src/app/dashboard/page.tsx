@@ -9,8 +9,9 @@ import {
   where,
   getDocs,
   orderBy,
-  deleteDoc,
+  updateDoc,
   doc,
+  serverTimestamp,
 } from "firebase/firestore";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { useRouter } from "next/navigation";
@@ -120,6 +121,10 @@ export default function DashboardPage() {
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
+
+        // Implementação do Soft Delete: Ignora links marcados como deletados
+        if (data.isDeleted) return;
+
         clicks += data.clickCount || 0;
         if (data.isActive) active++;
 
@@ -135,7 +140,7 @@ export default function DashboardPage() {
       });
 
       setStats({
-        totalLinks: querySnapshot.size,
+        totalLinks: linksArray.length,
         totalClicks: clicks,
         activeLinks: active,
       });
@@ -148,7 +153,6 @@ export default function DashboardPage() {
     }
   };
 
-  // Aciona o Modal do Shadcn em vez do confirm do navegador
   const handleOpenDeleteDialog = () => {
     setIsConfirmDialogOpen(true);
   };
@@ -161,10 +165,17 @@ export default function DashboardPage() {
 
     setIsDeleting(true);
     try {
+      // Substituição do deleteDoc pelo updateDoc (Soft Delete)
       await Promise.all(
-        selectedIds.map((id) => deleteDoc(doc(db, "links", id))),
+        selectedIds.map((id) =>
+          updateDoc(doc(db, "links", id), {
+            isActive: false, // Pausa o link imediatamente
+            isDeleted: true, // Flag de exclusão lógica
+            deletedAt: serverTimestamp(), // Data exata da ação
+          }),
+        ),
       );
-      toast.success(`${selectedIds.length} link(s) excluído(s) com sucesso.`);
+      toast.success(`${selectedIds.length} link(s) removido(s) do painel.`);
       setRowSelection({});
       setIsConfirmDialogOpen(false);
       fetchDashboardData(user!.uid);
@@ -220,7 +231,7 @@ export default function DashboardPage() {
         return (
           <div className="flex items-center gap-2">
             <a
-              href={`/${slug}`}
+              href={`https://${shortLink}`}
               target="_blank"
               rel="noopener noreferrer"
               className="font-sans font-medium text-itc-ciano text-sm hover:underline"
@@ -231,7 +242,7 @@ export default function DashboardPage() {
               variant="ghost"
               size="icon"
               onClick={() => {
-                navigator.clipboard.writeText(shortLink);
+                navigator.clipboard.writeText(`https://${shortLink}`);
                 toast.success("Link copiado com sucesso!");
               }}
               className="h-6 w-6 rounded-md text-muted-foreground hover:text-itc-ciano hover:bg-itc-ciano/10 transition-colors"
@@ -327,7 +338,6 @@ export default function DashboardPage() {
 
   return (
     <div className="flex-1 space-y-8 p-8 max-w-7xl mx-auto w-full font-sans transition-colors duration-300">
-      {/* Grid de Cards de Métricas */}
       <div className="grid gap-4 md:grid-cols-3">
         <Card className="bg-card border-border shadow-sm text-card-foreground transition-all duration-300 hover:shadow-md hover:border-itc-ciano/40 hover:-translate-y-1">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
@@ -381,7 +391,6 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* Data Table de Links */}
       <Card className="bg-card border-border shadow-sm text-card-foreground">
         <CardHeader className="flex flex-row items-center justify-between">
           <div>
@@ -475,7 +484,6 @@ export default function DashboardPage() {
                 </Table>
               </div>
 
-              {/* Controles de Paginação */}
               <div className="flex items-center justify-between px-2">
                 <div className="text-sm text-muted-foreground font-sans">
                   {table.getFilteredSelectedRowModel().rows.length} de{" "}
@@ -508,7 +516,6 @@ export default function DashboardPage() {
         </CardContent>
       </Card>
 
-      {/* Dialog Customizado Substituindo o window.confirm de Lote */}
       <Dialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
         <DialogContent className="border-border bg-card font-sans max-w-md">
           <DialogHeader>
@@ -517,13 +524,13 @@ export default function DashboardPage() {
               Excluir Links Selecionados?
             </DialogTitle>
             <DialogDescription className="text-xs text-muted-foreground pt-1 leading-relaxed">
-              Você está prestes a excluir permanentemente{" "}
+              Você está prestes a excluir{" "}
               <span className="font-semibold text-foreground">
                 {selectedCount} link(s)
               </span>
-              . Esta ação removerá todos os dados de rastreamento, logs de
-              clique e QR Codes associados a esses encurtadores. Não será
-              possível reverter essa operação.
+              . Eles serão desativados e removidos do painel principal, mas o
+              histórico de acessos continuará armazenado no banco para
+              auditorias.
             </DialogDescription>
           </DialogHeader>
           <DialogFooter className="gap-2 sm:gap-0 border-t border-border pt-4 mt-2">
