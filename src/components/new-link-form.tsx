@@ -14,7 +14,7 @@ import { registerLog } from "@/lib/audit";
 import { User } from "firebase/auth";
 
 interface NewLinkFormProps {
-  user: User | null; // <-- Alterado para receber o user completo para metadados de auditoria
+  user: User | null; // <-- Recebe o user completo para metadados de auditoria
   onSuccess: () => void;
   onCancel: () => void;
 }
@@ -60,6 +60,7 @@ export function NewLinkForm({ user, onSuccess, onCancel }: NewLinkFormProps) {
         slug: finalSlug,
         clickCount: 0,
         isActive: true,
+        isDeleted: false, // 🟢 Correção: Garante conformidade imediata com a query da Dashboard
         createdBy: user?.uid || null,
         createdAt: Timestamp.now(),
         expiresAt: expiresAt ? Timestamp.fromDate(new Date(expiresAt)) : null,
@@ -68,7 +69,6 @@ export function NewLinkForm({ user, onSuccess, onCancel }: NewLinkFormProps) {
       };
 
       // --- SOLUÇÃO CONTRA RACE CONDITION (ATOMICIDADE NATIVA) ---
-      // Definimos o ID do documento explicitamente como o slug gerado/escolhido
       const slugRef = doc(db, "links", finalSlug);
 
       try {

@@ -7,13 +7,13 @@ import {
   collection,
   query,
   where,
-  getDocs,
   orderBy,
   updateDoc,
   doc,
   serverTimestamp,
+  onSnapshot,
 } from "firebase/firestore";
-import { onAuthStateChanged, User } from "firebase/auth";
+import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -75,7 +75,6 @@ interface LinkData {
 
 export default function DashboardPage() {
   const router = useRouter();
-  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
 
   const [stats, setStats] = useState({
@@ -94,65 +93,67 @@ export default function DashboardPage() {
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    let unsubscribeSnapshot: (() => void) | null = null;
+
+    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       if (!currentUser) {
         router.push("/login");
       } else {
-        setUser(currentUser);
-        fetchDashboardData(currentUser.uid);
+        // 🚀 CONEXÃO EM TEMPO REAL COM O FIRESTORE (onSnapshot)
+        const linksRef = collection(db, "links");
+        const q = query(
+          linksRef,
+          where("createdBy", "==", currentUser.uid),
+          where("isDeleted", "==", false),
+          orderBy("createdAt", "desc"),
+        );
+
+        unsubscribeSnapshot = onSnapshot(
+          q,
+          (querySnapshot) => {
+            let clicks = 0;
+            let active = 0;
+            const linksArray: LinkData[] = [];
+
+            querySnapshot.forEach((doc) => {
+              const data = doc.data();
+
+              clicks += data.clickCount || 0;
+              if (data.isActive) active++;
+
+              linksArray.push({
+                id: doc.id,
+                slug: data.slug,
+                originalUrl: data.originalUrl,
+                title: data.title || "Sem título",
+                clickCount: data.clickCount || 0,
+                isActive: data.isActive,
+                createdAt: data.createdAt,
+              });
+            });
+
+            setStats({
+              totalLinks: linksArray.length,
+              totalClicks: clicks,
+              activeLinks: active,
+            });
+            setLinks(linksArray);
+            setLoading(false);
+          },
+          (error) => {
+            console.error("Erro ao escutar dados do dashboard:", error);
+            toast.error("Erro ao sincronizar métricas em tempo real.");
+            setLoading(false);
+          },
+        );
       }
     });
-    return () => unsubscribe();
+
+    return () => {
+      unsubscribeAuth();
+      if (unsubscribeSnapshot) unsubscribeSnapshot();
+    };
   }, [router]);
-
-  const fetchDashboardData = async (userId: string) => {
-    try {
-      const linksRef = collection(db, "links");
-
-      // 🚀 QUERY OTIRMIZADA: Filtro direto no servidor do Firestore
-      const q = query(
-        linksRef,
-        where("createdBy", "==", userId),
-        where("isDeleted", "==", false),
-        orderBy("createdAt", "desc"),
-      );
-
-      const querySnapshot = await getDocs(q);
-
-      let clicks = 0;
-      let active = 0;
-      const linksArray: LinkData[] = [];
-
-      querySnapshot.forEach((doc) => {
-        const data = doc.data();
-
-        clicks += data.clickCount || 0;
-        if (data.isActive) active++;
-
-        linksArray.push({
-          id: doc.id,
-          slug: data.slug,
-          originalUrl: data.originalUrl,
-          title: data.title || "Sem título",
-          clickCount: data.clickCount || 0,
-          isActive: data.isActive,
-          createdAt: data.createdAt,
-        });
-      });
-
-      setStats({
-        totalLinks: linksArray.length,
-        totalClicks: clicks,
-        activeLinks: active,
-      });
-      setLinks(linksArray);
-    } catch (error) {
-      console.error("Erro ao carregar dados do dashboard:", error);
-      toast.error("Erro ao sincronizar métricas com o Firestore.");
-    } finally {
-      setLoading(false);
-    }
-  };
 
   const handleOpenDeleteDialog = () => {
     setIsConfirmDialogOpen(true);
@@ -178,7 +179,6 @@ export default function DashboardPage() {
       toast.success(`${selectedIds.length} link(s) removido(s) do painel.`);
       setRowSelection({});
       setIsConfirmDialogOpen(false);
-      fetchDashboardData(user!.uid);
     } catch (error) {
       console.error("Erro ao deletar links:", error);
       toast.error("Falha ao excluir os links selecionados.");
@@ -311,7 +311,6 @@ export default function DashboardPage() {
     },
   ];
 
-  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: links,
     columns,

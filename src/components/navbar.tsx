@@ -111,18 +111,12 @@ export function Navbar() {
                   ITC Brasil.
                 </DialogDescription>
               </DialogHeader>
-
               {/* Renderização do Componente Limpo */}
-              <NewLinkForm
-                user={user} // <-- Lembra de ajustar para receber o objeto user como combinamos antes!
-                onSuccess={() => {
-                  setIsDialogOpen(false);
 
-                  // Dá 800 milissegundos para o Firebase propagar o link na nuvem antes de recarregar
-                  setTimeout(() => {
-                    router.refresh();
-                    window.location.reload();
-                  }, 800);
+              <NewLinkForm
+                user={user}
+                onSuccess={() => {
+                  setIsDialogOpen(false); // Apenas fecha o modal suavemente!
                 }}
                 onCancel={() => setIsDialogOpen(false)}
               />
