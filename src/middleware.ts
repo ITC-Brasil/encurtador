@@ -1,15 +1,16 @@
-// src/proxy.ts
+// src/middleware.ts
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 
-// O nome da função OBRIGATORIAMENTE precisa ser "middleware"
 export async function middleware(request: NextRequest) {
   const { pathname, origin } = request.nextUrl;
 
-  // Ignora rotas de sistema, painel e arquivos estáticos
+  // 🛡️ LISTA DE EXCEÇÕES RIGOROSA: Ignora o ecossistema do painel e do sistema
   if (
-    pathname.startsWith("/dashboard") ||
+    pathname === "/dashboard" ||
+    pathname.startsWith("/dashboard/") || // <-- Garante que /dashboard/users, /dashboard/links, etc. passem direto!
     pathname.startsWith("/login") ||
+    pathname.startsWith("/invite") ||
     pathname.startsWith("/expired") ||
     pathname.startsWith("/protected") ||
     pathname.startsWith("/api") ||

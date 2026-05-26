@@ -1,10 +1,19 @@
-// src/app/dashboard/users/page.tsx
+// src/app/dashboard/page.tsx
 "use client";
 
 import { useEffect, useState } from "react";
+import { db, auth } from "@/lib/firebase";
+import {
+  collection,
+  query,
+  where,
+  getDocs,
+  orderBy,
+  deleteDoc,
+  doc,
+} from "firebase/firestore";
+import { onAuthStateChanged, User } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import { auth } from "@/lib/firebase";
-import { onAuthStateChanged } from "firebase/auth";
 import {
   Card,
   CardContent,
@@ -12,23 +21,6 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
-import { Badge } from "@/components/ui/badge";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
 import {
   Table,
   TableBody,
@@ -37,420 +29,522 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
-  ArrowLeft,
-  UserPlus,
-  Trash2,
-  Play,
-  AlertTriangle,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
+  Link2,
+  MousePointerClick,
+  CheckCircle,
+  QrCode,
   ArrowUpDown,
+  Trash2,
+  Copy,
+  AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
-import { InviteMemberForm } from "@/components/invite-member-form";
 
-interface Colaborador {
-  uid: string;
-  name: string;
-  email: string;
-  role: "Administrador" | "Colaborador";
-  status: "Ativo" | "Suspenso" | "Bloqueado";
-  createdAt: string;
+// TanStack Table Imports
+import {
+  ColumnDef,
+  flexRender,
+  getCoreRowModel,
+  getPaginationRowModel,
+  getSortedRowModel,
+  SortingState,
+  useReactTable,
+} from "@tanstack/react-table";
+
+interface LinkData {
+  id: string;
+  slug: string;
+  originalUrl: string;
+  title: string;
+  clickCount: number;
+  isActive: boolean;
+  createdAt: string | Date;
 }
 
-type OrderDirection = "asc" | "desc" | null;
-
-export default function GestaoUsuariosPage() {
+export default function DashboardPage() {
   const router = useRouter();
+  const [user, setUser] = useState<User | null>(null);
   const [loading, setLoading] = useState(true);
-  const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
-  const [currentAdminEmail, setCurrentAdminEmail] = useState<string | null>(
-    null,
-  );
 
-  const [sortRole, setSortRole] = useState<OrderDirection>(null);
-  const [sortStatus, setSortStatus] = useState<OrderDirection>(null);
+  const [stats, setStats] = useState({
+    totalLinks: 0,
+    totalClicks: 0,
+    activeLinks: 0,
+  });
+  const [links, setLinks] = useState<LinkData[]>([]);
 
-  const cardHoverClass =
-    "transition-all duration-300 hover:shadow-md hover:border-itc-ciano/30";
+  // Estados do Data Table
+  const [sorting, setSorting] = useState<SortingState>([]);
+  const [rowSelection, setRowSelection] = useState({});
+  const [isDeleting, setIsDeleting] = useState(false);
 
-  const fetchColaboradores = async () => {
+  // Estado para controlar o Modal Customizado de Deleção
+  const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
+
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+      if (!currentUser) {
+        router.push("/login");
+      } else {
+        setUser(currentUser);
+        fetchDashboardData(currentUser.uid);
+      }
+    });
+    return () => unsubscribe();
+  }, [router]);
+
+  const fetchDashboardData = async (userId: string) => {
     try {
-      const currentUser = auth.currentUser;
-      if (!currentUser) return;
+      const linksRef = collection(db, "links");
+      const q = query(
+        linksRef,
+        where("createdBy", "==", userId),
+        orderBy("createdAt", "desc"),
+      );
+      const querySnapshot = await getDocs(q);
 
-      const token = await currentUser.getIdToken();
+      let clicks = 0;
+      let active = 0;
+      const linksArray: LinkData[] = [];
 
-      const res = await fetch("/api/usuarios", {
-        method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+      querySnapshot.forEach((doc) => {
+        const data = doc.data();
+        clicks += data.clickCount || 0;
+        if (data.isActive) active++;
+
+        linksArray.push({
+          id: doc.id,
+          slug: data.slug,
+          originalUrl: data.originalUrl,
+          title: data.title || "Sem título",
+          clickCount: data.clickCount || 0,
+          isActive: data.isActive,
+          createdAt: data.createdAt,
+        });
       });
 
-      if (!res.ok) {
-        if (res.status === 401) {
-          console.warn("Usuário sem permissão de Administrador no Firestore.");
-        }
-        throw new Error();
-      }
-
-      const data = await res.json();
-      setColaboradores(data);
-    } catch {
-      toast.error("Não foi possível carregar os colaboradores.");
+      setStats({
+        totalLinks: querySnapshot.size,
+        totalClicks: clicks,
+        activeLinks: active,
+      });
+      setLinks(linksArray);
+    } catch (error) {
+      console.error("Erro ao carregar dados do dashboard:", error);
+      toast.error("Erro ao sincronizar métricas com o Firestore.");
     } finally {
       setLoading(false);
     }
   };
 
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (!user) {
-        router.push("/login");
-        return;
-      }
-      setCurrentAdminEmail(user.email);
-      fetchColaboradores();
-    });
-    return () => unsubscribe();
-  }, [router]);
-
-  const toggleSortRole = () => {
-    const nextDirection: OrderDirection =
-      sortRole === "asc" ? "desc" : sortRole === "desc" ? null : "asc";
-    setSortRole(nextDirection);
-    setSortStatus(null);
-
-    if (!nextDirection) {
-      fetchColaboradores();
-      return;
-    }
-
-    setColaboradores((prev) =>
-      [...prev].sort((a, b) => {
-        return nextDirection === "asc"
-          ? a.role.localeCompare(b.role)
-          : b.role.localeCompare(a.role);
-      }),
-    );
+  // Aciona o Modal do Shadcn em vez do confirm do navegador
+  const handleOpenDeleteDialog = () => {
+    setIsConfirmDialogOpen(true);
   };
 
-  const toggleSortStatus = () => {
-    const nextDirection: OrderDirection =
-      sortStatus === "asc" ? "desc" : sortStatus === "desc" ? null : "asc";
-    setSortStatus(nextDirection);
-    setSortRole(null);
+  const handleConfirmDeleteSelected = async () => {
+    const selectedIds = table
+      .getFilteredSelectedRowModel()
+      .rows.map((row) => row.original.id);
+    if (selectedIds.length === 0) return;
 
-    if (!nextDirection) {
-      fetchColaboradores();
-      return;
-    }
-
-    setColaboradores((prev) =>
-      [...prev].sort((a, b) => {
-        const statusA = a.status || "Ativo";
-        const statusB = b.status || "Ativo";
-        return nextDirection === "asc"
-          ? statusA.localeCompare(statusB)
-          : statusB.localeCompare(statusA);
-      }),
-    );
-  };
-
-  const handleRoleChange = async (
-    uid: string,
-    newRole: "Administrador" | "Colaborador",
-  ) => {
+    setIsDeleting(true);
     try {
-      const token = await auth.currentUser?.getIdToken();
-
-      const res = await fetch("/api/usuarios", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ uid, role: newRole }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Erro ao alterar permissão.");
-      }
-
-      toast.success("Permissão atualizada com sucesso!");
-      fetchColaboradores();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao alterar nível";
-      toast.error(msg);
-    }
-  };
-
-  const handleToggleStatus = async (
-    uid: string,
-    currentStatus: string,
-    name: string,
-  ) => {
-    const nextStatus =
-      currentStatus === "Suspenso" || currentStatus === "Bloqueado"
-        ? "Ativo"
-        : "Suspenso";
-    try {
-      const token = await auth.currentUser?.getIdToken();
-
-      const res = await fetch("/api/usuarios", {
-        method: "PUT",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({ uid, status: nextStatus }),
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Erro ao alterar status.");
-      }
-
-      toast.success(
-        nextStatus === "Suspenso"
-          ? `Acesso de ${name} suspenso.`
-          : `Acesso de ${name} reativado.`,
+      await Promise.all(
+        selectedIds.map((id) => deleteDoc(doc(db, "links", id))),
       );
-      fetchColaboradores();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro ao alterar status";
-      toast.error(msg);
+      toast.success(`${selectedIds.length} link(s) excluído(s) com sucesso.`);
+      setRowSelection({});
+      setIsConfirmDialogOpen(false);
+      fetchDashboardData(user!.uid);
+    } catch (error) {
+      console.error("Erro ao deletar links:", error);
+      toast.error("Falha ao excluir os links selecionados.");
+    } finally {
+      setIsDeleting(false);
     }
   };
 
-  const handleDeletarUsuario = async (uid: string, name: string) => {
-    if (
-      !confirm(
-        `⚠️ ALERTA MÁXIMO:\nDeseja DELETAR DEFINITIVAMENTE o colaborador ${name}?\nEsta ação apagará a conta permanentemente.`,
-      )
-    )
-      return;
+  const columns: ColumnDef<LinkData>[] = [
+    {
+      id: "select",
+      header: ({ table }) => (
+        <Checkbox
+          checked={
+            table.getIsAllPageRowsSelected() ||
+            (table.getIsSomePageRowsSelected() && "indeterminate")
+          }
+          onCheckedChange={(value) => table.toggleAllPageRowsSelected(!!value)}
+          aria-label="Selecionar todos"
+          className="translate-y-0.5 border-border data-[state=checked]:bg-itc-ciano data-[state=checked]:border-itc-ciano"
+        />
+      ),
+      cell: ({ row }) => (
+        <Checkbox
+          checked={row.getIsSelected()}
+          onCheckedChange={(value) => row.toggleSelected(!!value)}
+          aria-label="Selecionar linha"
+          className="translate-y-0.5 border-border data-[state=checked]:bg-itc-ciano data-[state=checked]:border-itc-ciano"
+        />
+      ),
+      enableSorting: false,
+      enableHiding: false,
+    },
+    {
+      accessorKey: "title",
+      header: "Identificação",
+      cell: ({ row }) => (
+        <div className="font-medium text-foreground font-sans">
+          {row.getValue("title")}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "slug",
+      header: "Link Curto",
+      cell: ({ row }) => {
+        const slug = row.getValue("slug") as string;
+        const shortLink = `itcbr.xyz/${slug}`;
 
-    try {
-      const token = await auth.currentUser?.getIdToken();
+        return (
+          <div className="flex items-center gap-2">
+            <a
+              href={`/${slug}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-sans font-medium text-itc-ciano text-sm hover:underline"
+            >
+              {shortLink}
+            </a>
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => {
+                navigator.clipboard.writeText(shortLink);
+                toast.success("Link copiado com sucesso!");
+              }}
+              className="h-6 w-6 rounded-md text-muted-foreground hover:text-itc-ciano hover:bg-itc-ciano/10 transition-colors"
+              title="Copiar link"
+            >
+              <Copy className="h-3 w-3" />
+            </Button>
+          </div>
+        );
+      },
+    },
+    {
+      accessorKey: "clickCount",
+      header: ({ column }) => {
+        return (
+          <Button
+            variant="ghost"
+            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+            className="hover:bg-accent hover:text-foreground font-semibold px-0 font-sans flex items-center gap-1"
+          >
+            Cliques
+            <ArrowUpDown className="h-4 w-4" />
+          </Button>
+        );
+      },
+      cell: ({ row }) => (
+        <div className="font-sans font-semibold text-foreground">
+          {row.getValue("clickCount")}
+        </div>
+      ),
+    },
+    {
+      accessorKey: "isActive",
+      header: "Status",
+      cell: ({ row }) => {
+        const isActive = row.getValue("isActive");
+        return isActive ? (
+          <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-1 text-xs font-medium text-itc-sucesso ring-1 ring-emerald-500/20 font-sans">
+            Ativo
+          </span>
+        ) : (
+          <span className="inline-flex items-center rounded-full bg-red-500/10 px-2 py-1 text-xs font-medium text-itc-erro ring-1 ring-red-500/20 font-sans">
+            Expirado
+          </span>
+        );
+      },
+    },
+    {
+      id: "actions",
+      header: () => <div className="text-right">Ações</div>,
+      cell: ({ row }) => {
+        const link = row.original;
+        return (
+          <div className="text-right">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => router.push(`/dashboard/links/${link.id}`)}
+              className="text-muted-foreground hover:text-itc-ciano hover:bg-itc-ciano/10 font-sans"
+            >
+              <QrCode className="h-4 w-4 mr-1" /> Detalhes
+            </Button>
+          </div>
+        );
+      },
+    },
+  ];
 
-      const res = await fetch(`/api/usuarios?uid=${uid}`, {
-        method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error || "Falha ao deletar o colaborador.");
-      }
-
-      toast.success(`Usuário ${name} excluído do sistema.`);
-      fetchColaboradores();
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : "Erro na exclusão";
-      toast.error(msg);
-    }
-  };
+  // eslint-disable-next-line react-hooks/incompatible-library
+  const table = useReactTable({
+    data: links,
+    columns,
+    getCoreRowModel: getCoreRowModel(),
+    getPaginationRowModel: getPaginationRowModel(),
+    onSortingChange: setSorting,
+    getSortedRowModel: getSortedRowModel(),
+    onRowSelectionChange: setRowSelection,
+    state: {
+      sorting,
+      rowSelection,
+    },
+  });
 
   if (loading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center font-sans font-medium text-sm text-muted-foreground bg-background">
-        Carregando painel de segurança...
+      <div className="flex h-screen w-full items-center justify-center font-sans text-muted-foreground bg-background">
+        Carregando painel ITC...
       </div>
     );
   }
 
-  return (
-    <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-4">
-      <Button
-        variant="ghost"
-        onClick={() => router.push("/dashboard")}
-        className="text-muted-foreground gap-2 pl-0 hover:bg-transparent font-sans text-xs w-max mb-2"
-      >
-        <ArrowLeft className="h-4 w-4" /> Voltar ao Painel
-      </Button>
+  const selectedCount = Object.keys(rowSelection).length;
 
-      <Card className={`bg-card border-border shadow-sm ${cardHoverClass}`}>
-        <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6">
-          <div className="space-y-1">
-            <CardTitle className="text-xl font-bold text-foreground font-sans">
-              Equipe ITC Brasil
+  return (
+    <div className="flex-1 space-y-8 p-8 max-w-7xl mx-auto w-full font-sans transition-colors duration-300">
+      {/* Grid de Cards de Métricas */}
+      <div className="grid gap-4 md:grid-cols-3">
+        <Card className="bg-card border-border shadow-sm text-card-foreground transition-all duration-300 hover:shadow-md hover:border-itc-ciano/40 hover:-translate-y-1">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground font-sans">
+              Total de Links
             </CardTitle>
-            <CardDescription className="text-xs text-muted-foreground font-sans">
-              Gerencie acessos operacionais ou envie tokens de convite
-              exclusivos para novos integrantes.
+            <Link2 className="h-4 w-4 text-itc-ciano" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold font-sans text-foreground">
+              {stats.totalLinks}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 font-sans">
+              Links encurtados sob itcbr.xyz
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border shadow-sm text-card-foreground transition-all duration-300 hover:shadow-md hover:border-itc-ciano/40 hover:-translate-y-1">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground font-sans">
+              Cliques Acumulados
+            </CardTitle>
+            <MousePointerClick className="h-4 w-4 text-itc-ciano" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold font-sans text-foreground">
+              {stats.totalClicks}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 font-sans">
+              Rastreamento total de acessos
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="bg-card border-border shadow-sm text-card-foreground transition-all duration-300 hover:shadow-md hover:border-itc-ciano/40 hover:-translate-y-1">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-muted-foreground font-sans">
+              Links Ativos
+            </CardTitle>
+            <CheckCircle className="h-4 w-4 text-itc-ciano" />
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold font-sans text-foreground">
+              {stats.activeLinks}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1 font-sans">
+              Redirecionando em tempo real
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Data Table de Links */}
+      <Card className="bg-card border-border shadow-sm text-card-foreground">
+        <CardHeader className="flex flex-row items-center justify-between">
+          <div>
+            <CardTitle className="text-lg font-bold text-foreground font-sans">
+              Links Gerenciados
+            </CardTitle>
+            <CardDescription className="text-muted-foreground font-sans">
+              Seus encurtadores criados.
             </CardDescription>
           </div>
 
-          <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
-            <DialogTrigger asChild>
-              <Button className="bg-itc-ciano hover:bg-itc-ciano800 text-white font-sans text-xs font-medium gap-2 h-9 shadow-sm">
-                <UserPlus className="h-4 w-4" /> Convidar Integrante
-              </Button>
-            </DialogTrigger>
-            <DialogContent className="sm:max-w-md bg-card border-border font-sans text-foreground">
-              <DialogHeader>
-                <DialogTitle className="text-lg font-bold font-sans">
-                  Convidar Colaborador
-                </DialogTitle>
-                <DialogDescription className="text-xs text-muted-foreground font-sans">
-                  Gere um link seguro de autorização. O destinatário usará esse
-                  token para vincular seu Google Auth.
-                </DialogDescription>
-              </DialogHeader>
-
-              <InviteMemberForm
-                onSuccess={() => fetchColaboradores()}
-                onCancel={() => setIsDialogOpen(false)}
-              />
-            </DialogContent>
-          </Dialog>
+          {selectedCount > 0 && (
+            <Button
+              variant="destructive"
+              size="sm"
+              onClick={handleOpenDeleteDialog}
+              disabled={isDeleting}
+              className="font-sans gap-2"
+            >
+              <Trash2 className="h-4 w-4" />
+              {isDeleting
+                ? "Excluindo..."
+                : `Excluir ${selectedCount} selecionado(s)`}
+            </Button>
+          )}
         </CardHeader>
 
-        <CardContent className="p-0 border-t border-border">
-          <Table>
-            <TableHeader className="bg-muted/20">
-              <TableRow className="border-b border-border hover:bg-transparent">
-                <TableHead className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans">
-                  Colaborador
-                </TableHead>
-                <TableHead
-                  onClick={toggleSortRole}
-                  className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans cursor-pointer hover:bg-muted/30 select-none"
-                >
-                  <div className="flex items-center gap-1">
-                    Permissão <ArrowUpDown className="h-3 w-3" />
-                  </div>
-                </TableHead>
-                <TableHead
-                  onClick={toggleSortStatus}
-                  className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans text-center cursor-pointer hover:bg-muted/30 select-none"
-                >
-                  <div className="flex items-center justify-center gap-1">
-                    Status <ArrowUpDown className="h-3 w-3" />
-                  </div>
-                </TableHead>
-                <TableHead className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans text-right">
-                  Ações
-                </TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {colaboradores.map((colab: Colaborador) => (
-                <TableRow
-                  key={colab.uid}
-                  className="border-b border-border hover:bg-muted/30 transition-colors"
-                >
-                  <TableCell className="py-4 px-6">
-                    <p className="text-sm font-normal text-muted-foreground/80 font-sans tracking-wide break-all">
-                      {colab.email}
-                    </p>
-                  </TableCell>
-
-                  <TableCell className="py-4 px-6">
-                    <Select
-                      disabled={colab.email === currentAdminEmail}
-                      value={
-                        colab.role === "Administrador" ||
-                        colab.role === "Colaborador"
-                          ? colab.role
-                          : "Colaborador"
-                      }
-                      onValueChange={(val: "Administrador" | "Colaborador") =>
-                        handleRoleChange(colab.uid, val)
-                      }
-                    >
-                      <SelectTrigger className="w-36 border-border text-xs h-8 bg-background font-sans text-foreground">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent className="bg-card border-border font-sans text-foreground">
-                        <SelectItem
-                          value="Administrador"
-                          className="text-xs font-semibold"
+        <CardContent>
+          {links.length === 0 ? (
+            <div className="text-center py-6 text-sm text-muted-foreground font-sans">
+              Nenhum link criado ainda. Clique em &quot;Novo Link&quot; para
+              começar!
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="rounded-md border border-border">
+                <Table>
+                  <TableHeader className="bg-accent/50">
+                    {table.getHeaderGroups().map((headerGroup) => (
+                      <TableRow
+                        key={headerGroup.id}
+                        className="border-border hover:bg-transparent"
+                      >
+                        {headerGroup.headers.map((header) => {
+                          return (
+                            <TableHead
+                              key={header.id}
+                              className="text-muted-foreground font-semibold font-sans"
+                            >
+                              {header.isPlaceholder
+                                ? null
+                                : flexRender(
+                                    header.column.columnDef.header,
+                                    header.getContext(),
+                                  )}
+                            </TableHead>
+                          );
+                        })}
+                      </TableRow>
+                    ))}
+                  </TableHeader>
+                  <TableBody>
+                    {table.getRowModel().rows?.length ? (
+                      table.getRowModel().rows.map((row) => (
+                        <TableRow
+                          key={row.id}
+                          data-state={row.getIsSelected() && "selected"}
+                          className="border-border hover:bg-accent/50 data-[state=selected]:bg-accent/80 transition-colors"
                         >
-                          Administrador
-                        </SelectItem>
-                        <SelectItem value="Colaborador" className="text-xs">
-                          Colaborador
-                        </SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </TableCell>
+                          {row.getVisibleCells().map((cell) => (
+                            <TableCell key={cell.id}>
+                              {flexRender(
+                                cell.column.columnDef.cell,
+                                cell.getContext(),
+                              )}
+                            </TableCell>
+                          ))}
+                        </TableRow>
+                      ))
+                    ) : (
+                      <TableRow>
+                        <TableCell
+                          colSpan={columns.length}
+                          className="h-24 text-center"
+                        >
+                          Nenhum resultado encontrado.
+                        </TableCell>
+                      </TableRow>
+                    )}
+                  </TableBody>
+                </Table>
+              </div>
 
-                  <TableCell className="py-4 px-6 text-center">
-                    <Badge
-                      className={`border-none text-[10px] font-bold px-2.5 h-5 font-sans ${
-                        colab.status === "Suspenso" ||
-                        colab.status === "Bloqueado"
-                          ? "bg-itc-erro/10 text-itc-erro hover:bg-itc-erro/10"
-                          : "bg-itc-sucesso/10 text-itc-sucesso hover:bg-itc-sucesso/10"
-                      }`}
-                    >
-                      {colab.status || "Ativo"}
-                    </Badge>
-                  </TableCell>
-
-                  <TableCell className="py-4 px-6 text-right">
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="outline"
-                        disabled={colab.email === currentAdminEmail}
-                        onClick={() =>
-                          handleToggleStatus(
-                            colab.uid,
-                            colab.status || "Ativo",
-                            colab.name,
-                          )
-                        }
-                        className={`text-xs font-medium h-8 px-2.5 gap-1 border-border font-sans ${
-                          colab.status === "Suspenso" ||
-                          colab.status === "Bloqueado"
-                            ? "text-itc-sucesso hover:bg-itc-sucesso/10 hover:text-itc-sucesso border-itc-sucesso/30"
-                            : "text-amber-500 hover:bg-amber-500/10 hover:text-amber-600"
-                        }`}
-                      >
-                        {colab.status === "Suspenso" ||
-                        colab.status === "Bloqueado" ? (
-                          <>
-                            <Play className="h-3.5 w-3.5" /> Reativar
-                          </>
-                        ) : (
-                          <>
-                            <AlertTriangle className="h-3.5 w-3.5" /> Suspender
-                          </>
-                        )}
-                      </Button>
-
-                      <Button
-                        variant="destructive"
-                        disabled={colab.email === currentAdminEmail}
-                        onClick={() =>
-                          handleDeletarUsuario(colab.uid, colab.name)
-                        }
-                        className="bg-itc-erro/10 text-itc-erro hover:bg-itc-erro hover:text-white border-none font-medium text-xs gap-1 h-8 px-2.5 transition-all duration-200 font-sans"
-                      >
-                        <Trash2 className="h-3.5 w-3.5" /> Deletar
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-
-              {colaboradores.length === 0 && (
-                <TableRow>
-                  <TableCell
-                    colSpan={4}
-                    className="py-8 text-center text-xs text-muted-foreground font-medium font-sans"
+              {/* Controles de Paginação */}
+              <div className="flex items-center justify-between px-2">
+                <div className="text-sm text-muted-foreground font-sans">
+                  {table.getFilteredSelectedRowModel().rows.length} de{" "}
+                  {table.getFilteredRowModel().rows.length} linha(s)
+                  selecionada(s).
+                </div>
+                <div className="flex items-center space-x-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => table.previousPage()}
+                    disabled={!table.getCanPreviousPage()}
+                    className="font-sans border-border"
                   >
-                    Nenhum colaborador encontrado no banco de dados.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+                    Anterior
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => table.nextPage()}
+                    disabled={!table.getCanNextPage()}
+                    className="font-sans border-border"
+                  >
+                    Próximo
+                  </Button>
+                </div>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Dialog Customizado Substituindo o window.confirm de Lote */}
+      <Dialog open={isConfirmDialogOpen} onOpenChange={setIsConfirmDialogOpen}>
+        <DialogContent className="border-border bg-card font-sans max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground font-bold text-base font-sans">
+              <AlertTriangle className="h-5 w-5 text-itc-erro shrink-0" />
+              Excluir Links Selecionados?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1 leading-relaxed">
+              Você está prestes a excluir permanentemente{" "}
+              <span className="font-semibold text-foreground">
+                {selectedCount} link(s)
+              </span>
+              . Esta ação removerá todos os dados de rastreamento, logs de
+              clique e QR Codes associados a esses encurtadores. Não será
+              possível reverter essa operação.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0 border-t border-border pt-4 mt-2">
+            <Button
+              variant="outline"
+              disabled={isDeleting}
+              onClick={() => setIsConfirmDialogOpen(false)}
+              className="border-border text-foreground text-xs h-8"
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={isDeleting}
+              onClick={handleConfirmDeleteSelected}
+              className="bg-itc-erro hover:bg-red-600 text-white font-medium text-xs h-8"
+            >
+              {isDeleting ? "Excluindo..." : "Confirmar Exclusão"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
