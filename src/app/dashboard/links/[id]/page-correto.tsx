@@ -24,8 +24,6 @@ import {
 } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
-import { EditLinkForm } from "@/components/edit-link-form";
 import {
   ArrowLeft,
   Copy,
@@ -42,7 +40,6 @@ import {
   Smartphone,
   Sliders,
   Tag,
-  Loader2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
@@ -67,9 +64,9 @@ interface LinkDetail {
   title: string;
   clickCount: number;
   isActive: boolean;
-  createdAt: Timestamp | string | null;
-  expiresAt?: Timestamp | string | null;
-  maxClicks?: number | string;
+  createdAt: Timestamp;
+  expiresAt?: Timestamp;
+  maxClicks?: number;
   passwordHash?: string;
 }
 
@@ -88,27 +85,6 @@ interface DeviceDataPoint {
   value: number;
 }
 
-function formatarDataSegura(
-  dateValue: Timestamp | string | null | undefined,
-): string {
-  if (!dateValue) return "Não definida";
-  try {
-    if (dateValue && typeof (dateValue as Timestamp).toDate === "function") {
-      return (dateValue as Timestamp).toDate().toLocaleString("pt-BR");
-    }
-    if (dateValue instanceof Date) {
-      return dateValue.toLocaleString("pt-BR");
-    }
-    const parsedDate = new Date(dateValue as string);
-    if (!isNaN(parsedDate.getTime())) {
-      return parsedDate.toLocaleString("pt-BR");
-    }
-  } catch (error) {
-    console.error("Erro ao formatar data:", error);
-  }
-  return "Data inválida";
-}
-
 export default function LinkDetailsPage({
   params,
 }: {
@@ -116,16 +92,15 @@ export default function LinkDetailsPage({
 }) {
   const router = useRouter();
   const resolvedParams = use(params);
-
   const [loading, setLoading] = useState(true);
   const [linkData, setLinkData] = useState<LinkDetail | null>(null);
-  const [isEditOpen, setIsEditOpen] = useState(false);
 
   // Estados do Analytics
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
   const [topCities, setTopCities] = useState<CityDataPoint[]>([]);
   const [deviceData, setDeviceData] = useState<DeviceDataPoint[]>([]);
 
+  // Efeito hover premium idêntico para todos os cards
   const cardHoverClass =
     "transition-all duration-300 hover:shadow-md hover:border-itc-ciano/30 hover:-translate-y-0.5";
 
@@ -141,7 +116,7 @@ export default function LinkDetailsPage({
         const docSnap = await getDoc(docRef);
 
         if (!docSnap.exists()) {
-          toast.error("O link solicitado não foi encontrado.");
+          toast.error("Link não encontrado.");
           router.push("/dashboard");
           return;
         }
@@ -149,9 +124,8 @@ export default function LinkDetailsPage({
         const data = docSnap.data();
         setLinkData({ id: docSnap.id, ...data } as LinkDetail);
 
-        // Busca os cliques ordenando pela chave unificada 'clickedAt'
         const clicksRef = collection(db, "links", resolvedParams.id, "clicks");
-        const q = query(clicksRef, orderBy("clickedAt", "asc"));
+        const q = query(clicksRef, orderBy("timestamp", "asc"));
         const clicksSnap = await getDocs(q);
 
         const groupedDates: Record<string, number> = {};
@@ -161,17 +135,14 @@ export default function LinkDetailsPage({
 
         clicksSnap.forEach((doc) => {
           const clickData = doc.data();
-          const timestampField = clickData.clickedAt || clickData.timestamp;
 
-          if (timestampField) {
-            const dateObj =
-              typeof timestampField.toDate === "function"
-                ? timestampField.toDate()
-                : new Date(timestampField);
+          if (clickData.timestamp) {
+            const dateObj = clickData.timestamp.toDate();
             const dateStr = format(dateObj, "dd/MM", { locale: ptBR });
             groupedDates[dateStr] = (groupedDates[dateStr] || 0) + 1;
           }
 
+          // Tratamento para decodificar cidades preservando o dado real
           let rawCity = "Não identificada";
           try {
             rawCity = clickData.city
@@ -180,6 +151,7 @@ export default function LinkDetailsPage({
           } catch {
             rawCity = clickData.city || "Não identificada";
           }
+
           groupedCities[rawCity] = (groupedCities[rawCity] || 0) + 1;
 
           const ua = clickData.userAgent || "";
@@ -213,11 +185,11 @@ export default function LinkDetailsPage({
         if (totalClicksRecorded > 0) {
           setDeviceData([
             {
-              name: "Dispositivos Móveis",
+              name: "Celular",
               value: Math.round((mobileCount / totalClicksRecorded) * 100),
             },
             {
-              name: "Computadores/Desktop",
+              name: "Computador",
               value: Math.round((desktopCount / totalClicksRecorded) * 100),
             },
           ]);
@@ -225,8 +197,8 @@ export default function LinkDetailsPage({
           setDeviceData([]);
         }
       } catch (error) {
-        console.error("Erro ao buscar detalhes analíticos:", error);
-        toast.error("Falha ao carregar informações de telemetria.");
+        console.error("Erro ao buscar detalhes:", error);
+        toast.error("Falha ao carregar informações.");
       } finally {
         setLoading(false);
       }
@@ -235,63 +207,68 @@ export default function LinkDetailsPage({
     return () => unsubscribe();
   }, [router, resolvedParams.id]);
 
+  const shortUrl = linkData ? `itcbr.xyz/${linkData.slug}` : "";
+  const fullShortUrl = `https://itcbr.xyz/${linkData?.slug}`;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(shortUrl);
+    toast.success("Link copiado!");
+  };
+
+  const handleDownloadQR = () => {
+    const svg = document.getElementById("qr-code-svg");
+    if (!svg) return;
+
+    const svgData = new XMLSerializer().serializeToString(svg);
+    const canvas = document.createElement("canvas");
+    const ctx = canvas.getContext("2d");
+    const img = new Image();
+
+    img.onload = () => {
+      canvas.width = img.width;
+      canvas.height = img.height;
+      ctx?.drawImage(img, 0, 0);
+      const pngFile = canvas.toDataURL("image/png");
+
+      const downloadLink = document.createElement("a");
+      downloadLink.download = `qrcode-${linkData?.slug}.png`;
+      downloadLink.href = `${pngFile}`;
+      downloadLink.click();
+    };
+
+    img.src = "data:image/svg+xml;base64," + btoa(svgData);
+  };
+
+  const handleToggleActive = async () => {
+    if (!linkData) return;
+
+    const newState = !linkData.isActive;
+    try {
+      const docRef = doc(db, "links", linkData.id);
+      await updateDoc(docRef, { isActive: newState });
+
+      setLinkData({ ...linkData, isActive: newState });
+      toast.success(
+        `O link foi ${newState ? "ativado" : "desativado"} com sucesso.`,
+      );
+    } catch {
+      toast.error("Erro ao alterar o status do link.");
+    }
+  };
+
   if (loading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center font-sans text-xs font-medium text-muted-foreground bg-background">
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="h-5 w-5 animate-spin text-itc-ciano" />
-          <span>Buscando inteligência e mapas de tráfego corporativo...</span>
-        </div>
+      <div className="flex h-screen w-full items-center justify-center font-sans text-muted-foreground bg-background">
+        Carregando painel de inteligência...
       </div>
     );
   }
 
   if (!linkData) return null;
 
-  const shortUrl = `itcbr.xyz/${linkData.slug}`;
-  const fullShortUrl = `https://itcbr.xyz/${linkData.slug}`;
-
-  const handleCopy = () => {
-    navigator.clipboard.writeText(fullShortUrl);
-    toast.success("Link encurtador copiado para a área de transferência!");
-  };
-
-  const handleDownloadQR = () => {
-    const svg = document.getElementById("qr-code-svg");
-    if (!svg) return;
-    const svgData = new XMLSerializer().serializeToString(svg);
-    const canvas = document.createElement("canvas");
-    const ctx = canvas.getContext("2d");
-    const img = new Image();
-    img.onload = () => {
-      canvas.width = 300;
-      canvas.height = 300;
-      ctx?.drawImage(img, 0, 0, 300, 300);
-      const pngFile = canvas.toDataURL("image/png");
-      const downloadLink = document.createElement("a");
-      downloadLink.download = `qrcode-${linkData.slug}.png`;
-      downloadLink.href = pngFile;
-      downloadLink.click();
-    };
-    img.src = "data:image/svg+xml;base64," + btoa(svgData);
-  };
-
-  const handleToggleActive = async () => {
-    const newState = !linkData.isActive;
-    try {
-      const docRef = doc(db, "links", linkData.id);
-      await updateDoc(docRef, { isActive: newState });
-      setLinkData({ ...linkData, isActive: newState });
-      toast.success(
-        `O link foi ${newState ? "ativado" : "suspenso"} com sucesso.`,
-      );
-    } catch {
-      toast.error("Erro operacional ao alterar o status do link.");
-    }
-  };
-
   return (
     <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-4">
+      {/* Botão Voltar ao Painel restaurado com sucesso */}
       <Button
         variant="ghost"
         onClick={() => router.push("/dashboard")}
@@ -300,6 +277,7 @@ export default function LinkDetailsPage({
         <ArrowLeft className="h-4 w-4" /> Voltar ao Painel
       </Button>
 
+      {/* Card de Identidade do Link */}
       <Card className={`bg-card border-border shadow-sm ${cardHoverClass}`}>
         <CardHeader className="pb-2">
           <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
@@ -308,23 +286,24 @@ export default function LinkDetailsPage({
         </CardHeader>
         <CardContent className="pb-5">
           <div className="space-y-2">
-            <h1 className="text-3xl font-bold tracking-tight text-foreground font-sans break-all">
-              {linkData.title || "Link Sem Título"}
+            <h1 className="text-3xl font-bold tracking-tight text-foreground font-display">
+              {linkData.title}
             </h1>
             <div className="flex items-center gap-2 pt-1">
               <Badge
-                className={`border-none text-[10px] font-bold px-2.5 py-0.5 rounded ${
+                variant={linkData.isActive ? "default" : "destructive"}
+                className={
                   linkData.isActive
-                    ? "bg-itc-sucesso/10 text-itc-sucesso"
-                    : "bg-itc-erro/10 text-itc-erro"
-                }`}
+                    ? "bg-itc-sucesso/10 text-itc-sucesso hover:bg-itc-sucesso/20 border-none px-2.5"
+                    : "bg-itc-erro/10 text-itc-erro hover:bg-itc-erro/20 border-none px-2.5"
+                }
               >
                 {linkData.isActive ? "Ativo" : "Desativado"}
               </Badge>
               {linkData.passwordHash && (
                 <Badge
                   variant="outline"
-                  className="text-amber-500 border-amber-500/30 flex items-center gap-1 bg-amber-500/10 text-[10px] px-2 py-0.5"
+                  className="text-itc-atencao border-itc-atencao/50 flex items-center gap-1 bg-amber-500/10"
                 >
                   <ShieldAlert className="h-3 w-3" /> Protegido por Senha
                 </Badge>
@@ -334,9 +313,11 @@ export default function LinkDetailsPage({
         </CardContent>
       </Card>
 
+      {/* Grid Layout Principal Unificado */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-        {/* COLUNA ESQUERDA (OPERACIONAL) */}
+        {/* ================= COLUNA ESQUERDA (OPERACIONAL) ================= */}
         <div className="lg:col-span-1 flex flex-col gap-6">
+          {/* 1. Card de Destino Original */}
           <Card
             className={`bg-card border-border shadow-sm h-25.5 flex flex-col justify-center shrink-0 ${cardHoverClass}`}
           >
@@ -351,7 +332,7 @@ export default function LinkDetailsPage({
                 href={linkData.originalUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="text-sm text-foreground font-sans hover:text-itc-ciano flex items-center gap-1.5 break-all font-medium select-all"
+                className="text-sm text-foreground font-sans hover:text-itc-ciano flex items-center gap-1.5 break-all font-medium"
               >
                 {linkData.originalUrl}
                 <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
@@ -359,6 +340,7 @@ export default function LinkDetailsPage({
             </CardContent>
           </Card>
 
+          {/* 2. Card de Controle de Acesso */}
           <Card
             className={`bg-card border-border shadow-sm h-35 flex flex-col justify-center shrink-0 ${cardHoverClass}`}
           >
@@ -375,10 +357,12 @@ export default function LinkDetailsPage({
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant="outline"
-                  onClick={() => setIsEditOpen(true)}
+                  onClick={() =>
+                    router.push(`/dashboard/links/${linkData.id}/edit`)
+                  }
                   className="w-full gap-2 font-sans border-border text-xs h-8"
                 >
-                  <Edit className="h-3.5 w-3.5 text-itc-ciano" /> Editar Configs
+                  <Edit className="h-3.5 w-3.5" /> Editar Configs
                 </Button>
                 <Button
                   variant={linkData.isActive ? "destructive" : "default"}
@@ -391,6 +375,7 @@ export default function LinkDetailsPage({
             </CardContent>
           </Card>
 
+          {/* 3. Card do QR Code Corporativo */}
           <Card
             className={`bg-card border-border shadow-sm flex flex-col justify-between flex-1 min-h-80 ${cardHoverClass}`}
           >
@@ -411,18 +396,19 @@ export default function LinkDetailsPage({
                   bgColor="#ffffff"
                 />
               </div>
+
               <div className="w-full space-y-3 mt-2">
                 <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border border-border">
                   <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                  {/* Corrigido: Removido font-sans que gerava conflito com font-mono */}
-                  <span className="text-xs font-mono text-foreground truncate flex-1 select-all">
+                  <span className="text-xs font-mono text-foreground truncate flex-1">
                     {shortUrl}
                   </span>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <Button
                     onClick={handleCopy}
-                    className="w-full gap-2 bg-itc-ciano hover:bg-itc-ciano800 font-sans shadow-sm text-xs h-8 text-white"
+                    variant="default"
+                    className="w-full gap-2 bg-itc-ciano hover:bg-itc-ciano800 font-sans shadow-sm text-xs h-8"
                   >
                     <Copy className="h-3.5 w-3.5" /> Copiar Link
                   </Button>
@@ -439,8 +425,9 @@ export default function LinkDetailsPage({
           </Card>
         </div>
 
-        {/* COLUNA DIREITA (ANALYTICS) */}
+        {/* ================= COLUNA DIREITA (ANALYTICS) ================= */}
         <div className="lg:col-span-2 flex flex-col gap-6">
+          {/* Linha de Cartões Rápidos */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
             <Card
               className={`bg-card border-border shadow-sm h-25.5 flex flex-col justify-center ${cardHoverClass}`}
@@ -452,8 +439,8 @@ export default function LinkDetailsPage({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold text-foreground bg-muted/30 px-2 py-0.5 w-max rounded font-mono">
-                  {linkData.clickCount || 0}
+                <div className="text-2xl font-bold font-sans text-foreground">
+                  {linkData.clickCount}
                 </div>
               </CardContent>
             </Card>
@@ -468,13 +455,18 @@ export default function LinkDetailsPage({
                 </CardTitle>
               </CardHeader>
               <CardContent>
-                <div className="text-sm font-semibold font-sans text-foreground">
-                  {formatarDataSegura(linkData.createdAt)}
+                <div className="text-xl font-bold font-sans text-foreground">
+                  {linkData.createdAt?.toDate
+                    ? new Intl.DateTimeFormat("pt-BR").format(
+                        linkData.createdAt.toDate(),
+                      )
+                    : "—"}
                 </div>
               </CardContent>
             </Card>
           </div>
 
+          {/* Card Principal: Histórico de Evolução */}
           <Card
             className={`bg-card border-border shadow-sm shrink-0 ${cardHoverClass}`}
           >
@@ -494,6 +486,7 @@ export default function LinkDetailsPage({
                     width="100%"
                     height="100%"
                     minHeight={160}
+                    minWidth={0}
                   >
                     <LineChart
                       data={chartData}
@@ -501,46 +494,47 @@ export default function LinkDetailsPage({
                     >
                       <CartesianGrid
                         strokeDasharray="3 3"
-                        stroke="var(--border)"
+                        stroke="#333"
                         opacity={0.15}
                         vertical={false}
                       />
                       <XAxis
                         dataKey="date"
-                        stroke="var(--muted-foreground)"
-                        fontSize={10}
+                        stroke="#888888"
+                        fontSize={11}
                         tickLine={false}
                         axisLine={false}
                         dy={8}
                       />
                       <YAxis
-                        stroke="var(--muted-foreground)"
-                        fontSize={10}
+                        stroke="#888888"
+                        fontSize={11}
                         tickLine={false}
                         axisLine={false}
-                        allowDecimals={false}
                       />
                       <Tooltip
                         contentStyle={{
-                          backgroundColor: "var(--card)",
-                          borderColor: "var(--border)",
+                          backgroundColor: "hsl(var(--card))",
+                          borderColor: "hsl(var(--border))",
                           borderRadius: "8px",
-                          color: "var(--foreground)",
+                          color: "hsl(var(--foreground))",
                           fontSize: "12px",
                         }}
+                        itemStyle={{ color: "#00D1B2", fontWeight: "bold" }}
+                        labelStyle={{ fontWeight: "bold" }}
                       />
                       <Line
                         type="monotone"
                         dataKey="cliques"
                         name="Cliques"
-                        stroke="#008F95"
+                        stroke="#00D1B2"
                         strokeWidth={2.5}
                         dot={{
                           r: 3.5,
                           strokeWidth: 1.5,
-                          fill: "var(--background)",
+                          fill: "hsl(var(--background))",
                         }}
-                        activeDot={{ r: 5, strokeWidth: 0, fill: "#008F95" }}
+                        activeDot={{ r: 5, strokeWidth: 0, fill: "#00D1B2" }}
                       />
                     </LineChart>
                   </ResponsiveContainer>
@@ -557,19 +551,20 @@ export default function LinkDetailsPage({
             </CardContent>
           </Card>
 
-          {/* Removida a trava estrita chartData.length > 0 para fixar os cards conforme o design */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 items-stretch">
-            <Card
-              className={`bg-card border-border shadow-sm flex flex-col h-full overflow-hidden ${cardHoverClass}`}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
-                  <MapPin className="h-3.5 w-3.5 text-itc-ciano" /> Localização
-                  (Top Cidades)
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-1 flex-1 overflow-y-auto">
-                {topCities.length > 0 ? (
+          {/* Grid Duplo: Cidades e Dispositivos */}
+          {chartData.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 items-stretch">
+              {/* Card Cidades */}
+              <Card
+                className={`bg-card border-border shadow-sm flex flex-col h-full overflow-hidden ${cardHoverClass}`}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
+                    <MapPin className="h-3.5 w-3.5 text-itc-ciano" />{" "}
+                    Localização (Top Cidades)
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-1 flex-1 overflow-y-auto">
                   <div className="space-y-2.5">
                     {topCities.map((city, index) => (
                       <div
@@ -594,26 +589,21 @@ export default function LinkDetailsPage({
                       </div>
                     ))}
                   </div>
-                ) : (
-                  <p className="text-xs text-muted-foreground font-sans italic pt-2">
-                    Nenhuma cidade registrada.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
+                </CardContent>
+              </Card>
 
-            <Card
-              className={`bg-card border-border shadow-sm flex flex-col h-full justify-between ${cardHoverClass}`}
-            >
-              <CardHeader className="pb-2">
-                <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
-                  <Smartphone className="h-3.5 w-3.5 text-itc-ciano" />{" "}
-                  Plataforma de Acesso
-                </CardTitle>
-              </CardHeader>
-              <CardContent className="pt-1 pb-4 flex flex-col justify-center flex-1 space-y-3">
-                {deviceData.length > 0 ? (
-                  deviceData.map((device, index) => (
+              {/* Card Dispositivos */}
+              <Card
+                className={`bg-card border-border shadow-sm flex flex-col h-full justify-between ${cardHoverClass}`}
+              >
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
+                    <Smartphone className="h-3.5 w-3.5 text-itc-ciano" />{" "}
+                    Plataforma de Acesso
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pt-1 pb-4 flex flex-col justify-center flex-1 space-y-3">
+                  {deviceData.map((device, index) => (
                     <div key={index} className="space-y-1 font-sans">
                       <div className="flex justify-between text-[11px] font-medium text-muted-foreground">
                         <span>{device.name}</span>
@@ -628,35 +618,13 @@ export default function LinkDetailsPage({
                         />
                       </div>
                     </div>
-                  ))
-                ) : (
-                  <p className="text-xs text-muted-foreground font-sans italic">
-                    Nenhum dispositivo detectado.
-                  </p>
-                )}
-              </CardContent>
-            </Card>
-          </div>
+                  ))}
+                </CardContent>
+              </Card>
+            </div>
+          )}
         </div>
       </div>
-
-      <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
-        <DialogContent className="bg-card border-border max-w-md w-full">
-          <DialogTitle className="text-sm font-bold font-sans uppercase text-muted-foreground tracking-wider">
-            Modificar Parâmetros do Link
-          </DialogTitle>
-          <div className="pt-2">
-            <EditLinkForm
-              linkId={linkData.id}
-              onSuccess={() => {
-                setIsEditOpen(false);
-                window.location.reload();
-              }}
-              onCancel={() => setIsEditOpen(false)}
-            />
-          </div>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
