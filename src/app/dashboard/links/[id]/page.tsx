@@ -346,16 +346,17 @@ export default function LinkDetailsPage({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         {/* ================= COLUNA ESQUERDA ================= */}
         <div className="lg:col-span-1 flex flex-col gap-6">
+          {/* TRAVA GEOMÉTRICA 1: Altura fixa h-28 */}
           <Card
-            className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
+            className={`bg-card border-border shadow-sm flex flex-col shrink-0 h-28 ${cardHoverClass}`}
           >
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-0 pt-4">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Link2 className="h-3.5 w-3.5 text-itc-ciano" /> Destino
                 Original
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col justify-center">
+            <CardContent className="flex-1 flex flex-col justify-center pb-4">
               <div className="flex items-center gap-1.5 w-full">
                 <a
                   href={linkData.originalUrl}
@@ -372,15 +373,15 @@ export default function LinkDetailsPage({
           </Card>
 
           <Card
-            className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
+            className={`bg-card border-border shadow-sm flex flex-col shrink-0 ${cardHoverClass}`}
           >
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 pt-4">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Sliders className="h-3.5 w-3.5 text-itc-ciano" /> Controle do
                 Link
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col justify-center space-y-3">
+            <CardContent className="flex-1 flex flex-col justify-center space-y-3 pb-4">
               <p className="text-xs text-muted-foreground font-sans">
                 Modifique os parâmetros operacionais.
               </p>
@@ -406,13 +407,13 @@ export default function LinkDetailsPage({
           <Card
             className={`bg-card border-border shadow-sm flex flex-col flex-1 ${cardHoverClass}`}
           >
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 pt-4">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <QrIcon className="h-3.5 w-3.5 text-itc-ciano" /> QR Code
                 Corporativo
               </CardTitle>
             </CardHeader>
-            <CardContent className="flex-1 flex flex-col items-center justify-between pb-6 px-6">
+            <CardContent className="flex-1 flex flex-col items-center justify-center pb-6 px-6">
               <div className="bg-white p-3 rounded-xl shadow-inner border border-border mt-2">
                 <QRCodeSVG
                   id="qr-code-svg"
@@ -423,7 +424,7 @@ export default function LinkDetailsPage({
                   bgColor="#ffffff"
                 />
               </div>
-              <div className="w-full space-y-3 mt-4">
+              <div className="w-full space-y-3 mt-6">
                 <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border border-border">
                   <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
                   <span className="text-xs font-sans text-foreground truncate flex-1 select-all">
@@ -453,32 +454,34 @@ export default function LinkDetailsPage({
         {/* ================= COLUNA DIREITA ================= */}
         <div className="lg:col-span-2 flex flex-col gap-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
+            {/* TRAVA GEOMÉTRICA 1: Altura fixa h-28 */}
             <Card
-              className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
+              className={`bg-card border-border shadow-sm flex flex-col h-28 ${cardHoverClass}`}
             >
-              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+              <CardHeader className="pb-0 pt-4 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
                   <BarChart3 className="h-3.5 w-3.5 text-itc-ciano" /> Cliques
                   Acumulados
                 </CardTitle>
               </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-center">
+              <CardContent className="flex-1 flex flex-col justify-center pb-4">
                 <div className="text-2xl font-bold font-sans text-foreground">
                   {linkData.clickCount || 0}
                 </div>
               </CardContent>
             </Card>
 
+            {/* TRAVA GEOMÉTRICA 1: Altura fixa h-28 */}
             <Card
-              className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
+              className={`bg-card border-border shadow-sm flex flex-col h-28 ${cardHoverClass}`}
             >
-              <CardHeader className="pb-2 flex flex-row items-center justify-between space-y-0">
+              <CardHeader className="pb-0 pt-4 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5 text-itc-ciano" /> Data de
                   Criação
                 </CardTitle>
               </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-center">
+              <CardContent className="flex-1 flex flex-col justify-center pb-4">
                 <div className="text-sm font-semibold font-sans text-foreground">
                   {formatarDataSegura(linkData.createdAt)}
                 </div>
@@ -487,9 +490,9 @@ export default function LinkDetailsPage({
           </div>
 
           <Card
-            className={`bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
+            className={`bg-card border-border shadow-sm shrink-0 ${cardHoverClass}`}
           >
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 pt-4">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Activity className="h-4 w-4 text-itc-ciano" /> Histórico de
                 Acessos
@@ -498,7 +501,7 @@ export default function LinkDetailsPage({
                 Volume de cliques distribuído por dia
               </CardDescription>
             </CardHeader>
-            <CardContent className="flex-1 pt-2 pb-6">
+            <CardContent className="pt-2 pb-6">
               {chartData.length > 0 ? (
                 <div className="h-40 w-full">
                   <ResponsiveContainer
@@ -569,16 +572,17 @@ export default function LinkDetailsPage({
           </Card>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 items-stretch">
+            {/* TRAVA GEOMÉTRICA 3: h-full para esticar até o fim da coluna */}
             <Card
-              className={`bg-card border-border shadow-sm flex flex-col flex-1 overflow-hidden ${cardHoverClass}`}
+              className={`bg-card border-border shadow-sm flex flex-col h-full overflow-hidden ${cardHoverClass}`}
             >
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-2 pt-4">
                 <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
                   <MapPin className="h-3.5 w-3.5 text-itc-ciano" /> Localização
                   (Top Cidades)
                 </CardTitle>
               </CardHeader>
-              <CardContent className="flex-1 overflow-y-auto">
+              <CardContent className="flex-1 overflow-y-auto pt-2 pb-4">
                 {topCities.length > 0 ? (
                   <div className="space-y-2.5">
                     {topCities.map((city, index) => (
@@ -612,16 +616,17 @@ export default function LinkDetailsPage({
               </CardContent>
             </Card>
 
+            {/* TRAVA GEOMÉTRICA 3: h-full para esticar até o fim da coluna */}
             <Card
-              className={`bg-card border-border shadow-sm flex flex-col flex-1 ${cardHoverClass}`}
+              className={`bg-card border-border shadow-sm flex flex-col h-full ${cardHoverClass}`}
             >
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-2 pt-4">
                 <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
                   <Smartphone className="h-3.5 w-3.5 text-itc-ciano" />{" "}
                   Plataforma de Acesso
                 </CardTitle>
               </CardHeader>
-              <CardContent className="flex-1 flex flex-col justify-center space-y-3 pb-6">
+              <CardContent className="flex-1 flex flex-col justify-center space-y-3 pt-2 pb-4">
                 {deviceData.length > 0 ? (
                   deviceData.map((device, index) => (
                     <div key={index} className="space-y-1 font-sans">
