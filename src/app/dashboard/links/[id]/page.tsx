@@ -9,8 +9,6 @@ import {
   getDoc,
   updateDoc,
   collection,
-  query,
-  orderBy,
   getDocs,
   Timestamp,
 } from "firebase/firestore";
@@ -149,10 +147,9 @@ export default function LinkDetailsPage({
         const data = docSnap.data();
         setLinkData({ id: docSnap.id, ...data } as LinkDetail);
 
-        // Busca os cliques ordenando pela chave unificada 'clickedAt'
+        // Busca todos os cliques na subcoleção do link específico
         const clicksRef = collection(db, "links", resolvedParams.id, "clicks");
-        const q = query(clicksRef, orderBy("clickedAt", "asc"));
-        const clicksSnap = await getDocs(q);
+        const clicksSnap = await getDocs(clicksRef);
 
         const groupedDates: Record<string, number> = {};
         const groupedCities: Record<string, number> = {};
@@ -161,24 +158,31 @@ export default function LinkDetailsPage({
 
         clicksSnap.forEach((doc) => {
           const clickData = doc.data();
-          const timestampField = clickData.clickedAt || clickData.timestamp;
 
-          if (timestampField) {
-            const dateObj =
-              typeof timestampField.toDate === "function"
-                ? timestampField.toDate()
-                : new Date(timestampField);
-            const dateStr = format(dateObj, "dd/MM", { locale: ptBR });
-            groupedDates[dateStr] = (groupedDates[dateStr] || 0) + 1;
+          const rawTimestamp = clickData.timestamp || clickData.clickedAt;
+          if (rawTimestamp) {
+            let dateObj: Date;
+            if (typeof rawTimestamp.toDate === "function") {
+              dateObj = rawTimestamp.toDate();
+            } else {
+              dateObj = new Date(rawTimestamp);
+            }
+
+            if (!isNaN(dateObj.getTime())) {
+              const dateStr = format(dateObj, "dd/MM", { locale: ptBR });
+              groupedDates[dateStr] = (groupedDates[dateStr] || 0) + 1;
+            }
           }
 
-          let rawCity = "Não identificada";
+          let rawCity = clickData.city || clickData.City || "Não identificada";
           try {
-            rawCity = clickData.city
-              ? decodeURIComponent(clickData.city)
-              : "Não identificada";
+            rawCity = decodeURIComponent(rawCity);
           } catch {
-            rawCity = clickData.city || "Não identificada";
+            // Mantém a string bruta caso falhe o parse
+          }
+
+          if (!rawCity || rawCity === "null" || rawCity === "undefined") {
+            rawCity = "Não identificada";
           }
           groupedCities[rawCity] = (groupedCities[rawCity] || 0) + 1;
 
@@ -194,10 +198,16 @@ export default function LinkDetailsPage({
           }
         });
 
-        const formattedChart = Object.keys(groupedDates).map((key) => ({
-          date: key,
-          cliques: groupedDates[key],
-        }));
+        const formattedChart = Object.keys(groupedDates)
+          .map((key) => ({
+            date: key,
+            cliques: groupedDates[key],
+          }))
+          .sort((a, b) => {
+            const [dayA, monthA] = a.date.split("/").map(Number);
+            const [dayB, monthB] = b.date.split("/").map(Number);
+            return monthA !== monthB ? monthA - monthB : dayA - dayB;
+          });
         setChartData(formattedChart);
 
         const formattedCities = Object.keys(groupedCities)
@@ -337,38 +347,42 @@ export default function LinkDetailsPage({
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
         {/* COLUNA ESQUERDA (OPERACIONAL) */}
         <div className="lg:col-span-1 flex flex-col gap-6">
+          {/* Card Destino Original Corrigido (Sem overflow-hidden apertado, usando flex e truncate) */}
           <Card
-            className={`bg-card border-border shadow-sm h-25.5 flex flex-col justify-center shrink-0 ${cardHoverClass}`}
+            className={`bg-card border-border shadow-sm flex flex-col justify-center shrink-0 ${cardHoverClass}`}
           >
-            <CardHeader className="pb-1 pt-0">
+            <CardHeader className="pb-1 pt-4">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Link2 className="h-3.5 w-3.5 text-itc-ciano" /> Destino
                 Original
               </CardTitle>
             </CardHeader>
-            <CardContent className="pb-0">
-              <a
-                href={linkData.originalUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-sm text-foreground font-sans hover:text-itc-ciano flex items-center gap-1.5 break-all font-medium select-all"
-              >
-                {linkData.originalUrl}
+            <CardContent className="pb-4">
+              <div className="flex items-center gap-1.5 w-full">
+                <a
+                  href={linkData.originalUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-foreground font-sans hover:text-itc-ciano font-medium truncate flex-1 min-w-0"
+                  title={linkData.originalUrl}
+                >
+                  {linkData.originalUrl}
+                </a>
                 <ExternalLink className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
-              </a>
+              </div>
             </CardContent>
           </Card>
 
           <Card
-            className={`bg-card border-border shadow-sm h-35 flex flex-col justify-center shrink-0 ${cardHoverClass}`}
+            className={`bg-card border-border shadow-sm flex flex-col justify-center shrink-0 ${cardHoverClass}`}
           >
-            <CardHeader className="pb-1 pt-0">
+            <CardHeader className="pb-1 pt-4">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Sliders className="h-3.5 w-3.5 text-itc-ciano" /> Controle do
                 Link
               </CardTitle>
             </CardHeader>
-            <CardContent className="space-y-3 pb-0">
+            <CardContent className="space-y-3 pb-4">
               <p className="text-xs text-muted-foreground font-sans">
                 Modifique os parâmetros operacionais.
               </p>
@@ -414,8 +428,7 @@ export default function LinkDetailsPage({
               <div className="w-full space-y-3 mt-2">
                 <div className="flex items-center gap-2 p-2 rounded bg-muted/50 border border-border">
                   <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
-                  {/* Corrigido: Removido font-sans que gerava conflito com font-mono */}
-                  <span className="text-xs font-mono text-foreground truncate flex-1 select-all">
+                  <span className="text-xs font-sans text-foreground truncate flex-1 select-all">
                     {shortUrl}
                   </span>
                 </div>
@@ -442,32 +455,33 @@ export default function LinkDetailsPage({
         {/* COLUNA DIREITA (ANALYTICS) */}
         <div className="lg:col-span-2 flex flex-col gap-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 shrink-0">
+            {/* Card Cliques Acumulados Corrigido: Tamanho 2xl, limpo, sem bg e font-sans pura */}
             <Card
-              className={`bg-card border-border shadow-sm h-25.5 flex flex-col justify-center ${cardHoverClass}`}
+              className={`bg-card border-border shadow-sm flex flex-col justify-center ${cardHoverClass}`}
             >
-              <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
+              <CardHeader className="pb-1 pt-4 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
                   <BarChart3 className="h-3.5 w-3.5 text-itc-ciano" /> Cliques
                   Acumulados
                 </CardTitle>
               </CardHeader>
-              <CardContent>
-                <div className="text-2xl font-bold text-foreground bg-muted/30 px-2 py-0.5 w-max rounded font-mono">
+              <CardContent className="pb-4">
+                <div className="text-2xl font-bold font-sans text-foreground">
                   {linkData.clickCount || 0}
                 </div>
               </CardContent>
             </Card>
 
             <Card
-              className={`bg-card border-border shadow-sm h-25.5 flex flex-col justify-center ${cardHoverClass}`}
+              className={`bg-card border-border shadow-sm flex flex-col justify-center ${cardHoverClass}`}
             >
-              <CardHeader className="pb-1 flex flex-row items-center justify-between space-y-0">
+              <CardHeader className="pb-1 pt-4 flex flex-row items-center justify-between space-y-0">
                 <CardTitle className="text-xs font-bold uppercase text-muted-foreground flex items-center gap-1.5">
                   <Clock className="h-3.5 w-3.5 text-itc-ciano" /> Data de
                   Criação
                 </CardTitle>
               </CardHeader>
-              <CardContent>
+              <CardContent className="pb-4">
                 <div className="text-sm font-semibold font-sans text-foreground">
                   {formatarDataSegura(linkData.createdAt)}
                 </div>
@@ -478,7 +492,7 @@ export default function LinkDetailsPage({
           <Card
             className={`bg-card border-border shadow-sm shrink-0 ${cardHoverClass}`}
           >
-            <CardHeader className="pb-2">
+            <CardHeader className="pb-2 pt-4">
               <CardTitle className="text-xs font-bold uppercase tracking-wider text-muted-foreground flex items-center gap-1.5">
                 <Activity className="h-4 w-4 text-itc-ciano" /> Histórico de
                 Acessos
@@ -487,7 +501,7 @@ export default function LinkDetailsPage({
                 Volume de cliques distribuído por dia
               </CardDescription>
             </CardHeader>
-            <CardContent className="pt-4">
+            <CardContent className="pt-4 pb-4">
               {chartData.length > 0 ? (
                 <div className="h-40 w-full">
                   <ResponsiveContainer
@@ -557,18 +571,17 @@ export default function LinkDetailsPage({
             </CardContent>
           </Card>
 
-          {/* Removida a trava estrita chartData.length > 0 para fixar os cards conforme o design */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 flex-1 items-stretch">
             <Card
               className={`bg-card border-border shadow-sm flex flex-col h-full overflow-hidden ${cardHoverClass}`}
             >
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-2 pt-4">
                 <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
                   <MapPin className="h-3.5 w-3.5 text-itc-ciano" /> Localização
                   (Top Cidades)
                 </CardTitle>
               </CardHeader>
-              <CardContent className="pt-1 flex-1 overflow-y-auto">
+              <CardContent className="pt-1 pb-4 flex-1 overflow-y-auto">
                 {topCities.length > 0 ? (
                   <div className="space-y-2.5">
                     {topCities.map((city, index) => (
@@ -605,7 +618,7 @@ export default function LinkDetailsPage({
             <Card
               className={`bg-card border-border shadow-sm flex flex-col h-full justify-between ${cardHoverClass}`}
             >
-              <CardHeader className="pb-2">
+              <CardHeader className="pb-2 pt-4">
                 <CardTitle className="text-xs font-bold font-sans flex items-center gap-1.5 uppercase tracking-wider text-muted-foreground">
                   <Smartphone className="h-3.5 w-3.5 text-itc-ciano" />{" "}
                   Plataforma de Acesso
