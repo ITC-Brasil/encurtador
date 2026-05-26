@@ -52,6 +52,12 @@ export function Navbar() {
 
   const handleLogout = async () => {
     await signOut(auth);
+
+    // 🔐 DESTRUIÇÃO DO COOKIE DE PRESENÇA
+    // Força a expiração do cookie para o passado (1970) para bloquear o Middleware
+    document.cookie =
+      "itc-auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Strict; Secure";
+
     toast.success("Sessão encerrada.");
     router.push("/login");
   };

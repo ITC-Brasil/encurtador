@@ -5,11 +5,28 @@ import type { NextRequest } from "next/server";
 export async function middleware(request: NextRequest) {
   const { pathname, origin } = request.nextUrl;
 
-  // 🛡️ LISTA DE EXCEÇÕES RIGOROSA: Ignora o ecossistema do painel e do sistema
+  // 1. Verificação do Cookie de Presença
+  const authCookie = request.cookies.get("itc-auth")?.value;
+  const isAuthRoute = pathname.startsWith("/login");
+  const isProtectedRoute =
+    pathname.startsWith("/dashboard") ||
+    pathname.startsWith("/settings") ||
+    pathname.startsWith("/users");
+
+  // Regra A: Tenta acessar rota protegida SEM cookie -> chuta para o login
+  if (isProtectedRoute && !authCookie) {
+    return NextResponse.redirect(new URL("/login", request.url));
+  }
+
+  // Regra B: Tenta acessar login COM cookie -> manda direto para o dashboard
+  if (isAuthRoute && authCookie) {
+    return NextResponse.redirect(new URL("/dashboard", request.url));
+  }
+
+  // 2. LISTA DE EXCEÇÕES RIGOROSA: Ignora o ecossistema do painel e do sistema
   if (
-    pathname === "/dashboard" ||
-    pathname.startsWith("/dashboard/") || // <-- Garante que /dashboard/users, /dashboard/links, etc. passem direto!
-    pathname.startsWith("/login") ||
+    isProtectedRoute ||
+    isAuthRoute ||
     pathname.startsWith("/invite") ||
     pathname.startsWith("/expired") ||
     pathname.startsWith("/protected") ||
@@ -20,21 +37,18 @@ export async function middleware(request: NextRequest) {
     return NextResponse.next();
   }
 
-  // Captura o slug removendo a primeira barra (ex: /qualifica-df -> qualifica-df)
+  // 3. O Motor do Encurtador Público (Lógica preservada)
   const slug = pathname.substring(1);
 
   if (slug.length >= 3) {
     try {
-      // Consulta a nossa API interna
       const res = await fetch(`${origin}/api/validate/${slug}`, {
-        // Usa cache 'no-store' para garantir que sempre cheque o status real do banco
         cache: "no-store",
       });
 
       if (res.ok) {
         const data = await res.json();
 
-        // Roteamento baseado no status retornado (PRD Fluxo de Redirecionamento 5.3)
         if (data.status === "valid") {
           return NextResponse.redirect(new URL(data.originalUrl));
         }
@@ -51,7 +65,6 @@ export async function middleware(request: NextRequest) {
       }
     } catch (error) {
       console.error("Erro no Proxy:", error);
-      // Em caso de falha de rede/API, cai para a página expirada por segurança
       return NextResponse.redirect(new URL("/expired", request.url));
     }
   }

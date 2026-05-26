@@ -108,11 +108,15 @@ export default function DashboardPage() {
   const fetchDashboardData = async (userId: string) => {
     try {
       const linksRef = collection(db, "links");
+
+      // 🚀 QUERY OTIRMIZADA: Filtro direto no servidor do Firestore
       const q = query(
         linksRef,
         where("createdBy", "==", userId),
+        where("isDeleted", "==", false),
         orderBy("createdAt", "desc"),
       );
+
       const querySnapshot = await getDocs(q);
 
       let clicks = 0;
@@ -121,9 +125,6 @@ export default function DashboardPage() {
 
       querySnapshot.forEach((doc) => {
         const data = doc.data();
-
-        // Implementação do Soft Delete: Ignora links marcados como deletados
-        if (data.isDeleted) return;
 
         clicks += data.clickCount || 0;
         if (data.isActive) active++;
@@ -165,13 +166,12 @@ export default function DashboardPage() {
 
     setIsDeleting(true);
     try {
-      // Substituição do deleteDoc pelo updateDoc (Soft Delete)
       await Promise.all(
         selectedIds.map((id) =>
           updateDoc(doc(db, "links", id), {
-            isActive: false, // Pausa o link imediatamente
-            isDeleted: true, // Flag de exclusão lógica
-            deletedAt: serverTimestamp(), // Data exata da ação
+            isActive: false,
+            isDeleted: true,
+            deletedAt: serverTimestamp(),
           }),
         ),
       );

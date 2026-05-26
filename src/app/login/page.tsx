@@ -2,6 +2,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image"; // <-- Importação do componente otimizado
 import { auth, db, googleProvider } from "@/lib/firebase";
 import { signInWithPopup } from "firebase/auth";
 import { collection, query, where, getDocs } from "firebase/firestore";
@@ -28,6 +29,10 @@ export default function LoginPage() {
       const userSnap = await getDocs(userQuery);
 
       if (!userSnap.empty) {
+        // 🔐 INJEÇÃO DO COOKIE DE PRESENÇA (GATEKEEPER)
+        document.cookie =
+          "itc-auth=active; path=/; max-age=604800; SameSite=Strict; Secure";
+
         toast.success("Bem-vindo ao Encurtador ITC!");
         router.push("/dashboard");
         return;
@@ -51,17 +56,21 @@ export default function LoginPage() {
 
       <Card className="w-full max-w-md border-border shadow-xl bg-card text-card-foreground backdrop-blur-sm">
         <CardHeader className="space-y-4 text-center pb-8 pt-8">
-          {/* Lógica Invertida da Logo Corrigida */}
+          {/* Implementação com next/image */}
           <div className="mx-auto h-16 w-48 relative">
-            <img
+            <Image
               src="/images/logo-light.png"
               alt="ITC Brasil"
-              className="h-full w-full object-contain dark:hidden"
+              fill
+              priority
+              className="object-contain dark:hidden"
             />
-            <img
+            <Image
               src="/images/logo-dark.png"
               alt="ITC Brasil"
-              className="h-full w-full object-contain hidden dark:block"
+              fill
+              priority
+              className="object-contain hidden dark:block"
             />
           </div>
 

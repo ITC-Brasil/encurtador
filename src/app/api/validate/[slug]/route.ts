@@ -38,12 +38,18 @@ export async function GET(
     const data = linkDoc.data();
     const linkId = linkDoc.id;
 
-    // 3. Regra 1: Desativação Manual (RF-03.1)
+    // 3. Regra de Segurança: Exclusão Lógica (Soft Delete)
+    // Fica antes do isActive para garantir que retorne 404 se foi deletado.
+    if (data.isDeleted) {
+      return NextResponse.json({ status: "not_found" }, { status: 404 });
+    }
+
+    // 4. Regra 1: Desativação Manual (RF-03.1)
     if (!data.isActive) {
       return NextResponse.json({ status: "expired" }, { status: 410 });
     }
 
-    // 4. Regra 2: Expiração por Data (RF-03.2)
+    // 5. Regra 2: Expiração por Data (RF-03.2)
     if (data.expiresAt) {
       const now = new Date();
       const expirationDate = data.expiresAt.toDate();
@@ -52,19 +58,19 @@ export async function GET(
       }
     }
 
-    // 5. Regra 3: Limite de Cliques (RF-03.3)
+    // 6. Regra 3: Limite de Cliques (RF-03.3)
     if (data.maxClicks && data.maxClicks > 0) {
       if (data.clickCount >= data.maxClicks) {
         return NextResponse.json({ status: "expired" }, { status: 410 });
       }
     }
 
-    // 6. Regra 4: Proteção por Senha (RF-04.1)
+    // 7. Regra 4: Proteção por Senha (RF-04.1)
     if (data.passwordHash) {
       return NextResponse.json({ status: "protected" }, { status: 200 });
     }
 
-    // 7. Sucesso: Registra o Clique e os Metadados simultaneamente
+    // 8. Sucesso: Registra o Clique e os Metadados simultaneamente
     const updateCountPromise = updateDoc(doc(db, "links", linkId), {
       clickCount: increment(1),
     });
