@@ -1,8 +1,7 @@
 // src/app/login/page.tsx
 "use client";
 
-import { useState } from "react";
-import Image from "next/image"; // <-- Importação do componente otimizado
+import { useState, useEffect } from "react";
 import { auth, db, googleProvider } from "@/lib/firebase";
 import { signInWithPopup } from "firebase/auth";
 import { collection, query, where, getDocs } from "firebase/firestore";
@@ -15,6 +14,13 @@ import { ModeToggle } from "@/components/mode-toggle";
 export default function LoginPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
+
+  // 🧹 LIMPEZA DE SEGURANÇA: Limpa o cookie se o usuário caiu na tela de login
+  // Isso evita que o Middleware cause loopings de redirecionamento
+  useEffect(() => {
+    document.cookie =
+      "itc-auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Strict; Secure";
+  }, []);
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -29,9 +35,9 @@ export default function LoginPage() {
       const userSnap = await getDocs(userQuery);
 
       if (!userSnap.empty) {
-        // 🔐 INJEÇÃO DO COOKIE DE PRESENÇA (GATEKEEPER)
+        // Grava o cookie de autenticação ativa antes de ir para a dashboard
         document.cookie =
-          "itc-auth=active; path=/; max-age=604800; SameSite=Strict; Secure";
+          "itc-auth=active; path=/; max-age=86400; SameSite=Strict; Secure";
 
         toast.success("Bem-vindo ao Encurtador ITC!");
         router.push("/dashboard");
@@ -41,7 +47,7 @@ export default function LoginPage() {
       await auth.signOut();
       toast.error("Acesso negado — esta conta não possui convite ativo.");
     } catch (error) {
-      console.error("Erro no processo de login:", error);
+      console.error("Erro ao fazer login:", error);
       toast.error("Falha na autenticação. Tente novamente.");
     } finally {
       setLoading(false);
@@ -49,41 +55,20 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="relative flex h-screen w-full items-center justify-center bg-transparent px-4 transition-colors duration-300">
+    <div className="relative flex h-screen w-full items-center justify-center bg-transparent px-4">
       <div className="absolute top-4 right-4">
         <ModeToggle />
       </div>
-
-      <Card className="w-full max-w-md border-border shadow-xl bg-card text-card-foreground backdrop-blur-sm">
-        <CardHeader className="space-y-4 text-center pb-8 pt-8">
-          {/* Implementação com next/image */}
-          <div className="mx-auto h-16 w-48 relative">
-            <Image
-              src="/images/logo-light.png"
-              alt="ITC Brasil"
-              fill
-              priority
-              className="object-contain dark:hidden"
-            />
-            <Image
-              src="/images/logo-dark.png"
-              alt="ITC Brasil"
-              fill
-              priority
-              className="object-contain hidden dark:block"
-            />
-          </div>
-
-          <CardTitle className="text-xl font-bold tracking-tight text-foreground font-display mt-2">
-            Encurtador de URLs
+      <Card className="w-full max-w-md border-border shadow-xl bg-card">
+        <CardHeader className="space-y-4 text-center pb-6 pt-8">
+          <CardTitle className="text-xl font-bold font-sans text-foreground">
+            Acessar o Painel
           </CardTitle>
         </CardHeader>
-
-        <CardContent className="space-y-4">
+        <CardContent className="space-y-4 pb-8 px-8">
           <Button
             onClick={handleGoogleLogin}
             disabled={loading}
-            variant="outline"
             className="w-full h-11 flex items-center justify-center gap-3 transition-all border-border hover:bg-accent hover:text-accent-foreground font-sans font-medium"
           >
             <svg className="h-5 w-5 shrink-0" viewBox="0 0 24 24">
@@ -104,14 +89,8 @@ export default function LoginPage() {
                 fill="#EA4335"
               />
             </svg>
-            {loading
-              ? "Autenticando colaborador..."
-              : "Entrar com a conta Google"}
+            {loading ? "Autenticando..." : "Entrar com o Google"}
           </Button>
-
-          <p className="text-center text-xs text-muted-foreground font-sans mt-4">
-            Acesso restrito apenas a colaboradores autorizados.
-          </p>
         </CardContent>
       </Card>
     </div>
