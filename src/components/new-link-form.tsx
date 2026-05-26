@@ -3,21 +3,23 @@
 
 import { useState } from "react";
 import { db } from "@/lib/firebase";
-import { doc, setDoc, Timestamp } from "firebase/firestore"; // <-- Importando doc e setDoc
+import { doc, setDoc, Timestamp } from "firebase/firestore";
 import bcrypt from "bcryptjs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
 import { Link2, ShieldCheck, Calendar } from "lucide-react";
 import { toast } from "sonner";
+import { registerLog } from "@/lib/audit";
+import { User } from "firebase/auth";
 
 interface NewLinkFormProps {
-  userId: string | undefined;
+  user: User | null; // <-- Alterado para receber o user completo para metadados de auditoria
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-export function NewLinkForm({ userId, onSuccess, onCancel }: NewLinkFormProps) {
+export function NewLinkForm({ user, onSuccess, onCancel }: NewLinkFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [title, setTitle] = useState("");
   const [originalUrl, setOriginalUrl] = useState("");
@@ -58,7 +60,7 @@ export function NewLinkForm({ userId, onSuccess, onCancel }: NewLinkFormProps) {
         slug: finalSlug,
         clickCount: 0,
         isActive: true,
-        createdBy: userId || null,
+        createdBy: user?.uid || null,
         createdAt: Timestamp.now(),
         expiresAt: expiresAt ? Timestamp.fromDate(new Date(expiresAt)) : null,
         maxClicks: maxClicks ? parseInt(maxClicks, 10) : null,
@@ -72,6 +74,20 @@ export function NewLinkForm({ userId, onSuccess, onCancel }: NewLinkFormProps) {
       try {
         // Usa a atomicidade do Firestore definindo o slug como Document ID
         await setDoc(slugRef, linkPayload, { merge: false });
+
+        // 📝 DISPARO DE AUDITORIA: Registra a trilha imutável no sistema
+        if (user) {
+          await registerLog({
+            action: "LINK_CREATE",
+            performedBy: {
+              uid: user.uid,
+              name: user.displayName || "Colaborador",
+              email: user.email || "sem-email@itcbr.xyz",
+            },
+            targetId: finalSlug,
+            details: `Criou o link curto /${finalSlug} apontando para ${originalUrl.trim()}`,
+          });
+        }
 
         toast.success("Link criado com sucesso!");
         onSuccess();

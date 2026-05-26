@@ -114,11 +114,15 @@ export function Navbar() {
 
               {/* Renderização do Componente Limpo */}
               <NewLinkForm
-                userId={user?.uid}
+                user={user} // <-- Lembra de ajustar para receber o objeto user como combinamos antes!
                 onSuccess={() => {
                   setIsDialogOpen(false);
-                  router.refresh();
-                  window.location.reload();
+
+                  // Dá 800 milissegundos para o Firebase propagar o link na nuvem antes de recarregar
+                  setTimeout(() => {
+                    router.refresh();
+                    window.location.reload();
+                  }, 800);
                 }}
                 onCancel={() => setIsDialogOpen(false)}
               />
