@@ -1,22 +1,43 @@
 // src/components/new-link-form.tsx
 "use client";
 
-import { useState } from "react";
-import { db, auth } from "@/lib/firebase"; // 🟢 Importado auth para capturar sessão síncrona
-import { doc, setDoc, Timestamp } from "firebase/firestore";
+import { useState, useEffect } from "react";
+import { db, auth } from "@/lib/firebase";
+import {
+  doc,
+  setDoc,
+  Timestamp,
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+} from "firebase/firestore";
 import bcrypt from "bcryptjs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { DialogFooter } from "@/components/ui/dialog";
-import { Link2, ShieldCheck, Calendar } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Link2, ShieldCheck, Calendar, Tags } from "lucide-react";
 import { toast } from "sonner";
 import { registerLog } from "@/lib/audit";
 import { User } from "firebase/auth";
 
 interface NewLinkFormProps {
-  user: User | null; // Mantido por compatibilidade de assinatura de componente
+  user: User | null;
   onSuccess: () => void;
   onCancel: () => void;
+}
+
+interface Category {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
@@ -27,6 +48,36 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
   const [expiresAt, setExpiresAt] = useState("");
   const [maxClicks, setMaxClicks] = useState("");
   const [password, setPassword] = useState("");
+
+  // 🟢 Estados das Categorias
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryId, setCategoryId] = useState<string>("none");
+
+  // 🟢 Busca as categorias em tempo real ao abrir o modal
+  useEffect(() => {
+    const catRef = collection(db, "categories");
+    const q = query(catRef, orderBy("name", "asc"));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const catArray: Category[] = [];
+        snapshot.forEach((docSnap) => {
+          catArray.push({
+            id: docSnap.id,
+            name: docSnap.data().name,
+            color: docSnap.data().color,
+          });
+        });
+        setCategories(catArray);
+      },
+      (error) => {
+        console.error("Erro ao buscar categorias:", error);
+      },
+    );
+
+    return () => unsubscribe();
+  }, []);
 
   const generateRandomSlug = () => {
     const chars = "abcdefghijklmnopqrstuvwxyz0123456789";
@@ -45,7 +96,6 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
 
     setSubmitting(true);
     try {
-      // 🟢 Captura o usuário atual diretamente do estado nativo síncrono do Firebase Auth
       const currentUser = auth.currentUser;
 
       let finalSlug = slug
@@ -56,7 +106,9 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
 
       const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
-      // Montagem do payload com os metadados completos de propriedade
+      // 🟢 Encontra a categoria selecionada para desnormalizar os dados
+      const selectedCategory = categories.find((c) => c.id === categoryId);
+
       const linkPayload = {
         title: title.trim() || "Link Sem Título",
         originalUrl: originalUrl.trim(),
@@ -64,9 +116,15 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
         clickCount: 0,
         isActive: true,
         isDeleted: false,
+
+        // 🟢 Injeção de Metadados de Categoria
+        categoryId: selectedCategory ? selectedCategory.id : null,
+        categoryName: selectedCategory ? selectedCategory.name : null,
+        categoryColor: selectedCategory ? selectedCategory.color : null,
+
         createdBy: currentUser?.uid || null,
-        createdByName: currentUser?.displayName || "Colaborador", // 🟢 Adicionado para persistência estendida
-        createdByEmail: currentUser?.email || "sistema@itcbr.xyz", // 🟢 Adicionado para persistência estendida
+        createdByName: currentUser?.displayName || "Colaborador",
+        createdByEmail: currentUser?.email || "sistema@itcbr.xyz",
         createdAt: Timestamp.now(),
         expiresAt: expiresAt ? Timestamp.fromDate(new Date(expiresAt)) : null,
         maxClicks: maxClicks ? parseInt(maxClicks, 10) : null,
@@ -76,10 +134,8 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
       const slugRef = doc(db, "links", finalSlug);
 
       try {
-        // Gravação atômica do link curto
         await setDoc(slugRef, linkPayload, { merge: false });
 
-        // 📝 DISPARO DE AUDITORIA: Trilha de segurança imutável alimentada pelo auth do Firebase
         if (currentUser) {
           await registerLog({
             action: "LINK_CREATE",
@@ -89,14 +145,13 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
               email: currentUser.email || "sem-email@itcbr.xyz",
             },
             targetId: finalSlug,
-            details: `Criou o link curto /${finalSlug} apontando para ${originalUrl.trim()}`,
+            details: `Criou o link curto /${finalSlug} apontando para ${originalUrl.trim()}. ${selectedCategory ? `Categoria vinculada: [${selectedCategory.name}].` : ""}`,
           });
         }
 
         toast.success("Link criado com sucesso!");
         onSuccess();
       } catch (error: unknown) {
-        // 🟢 DIAGNÓSTICO INTERNO: Expõe falhas ocultas ou bloqueios de Security Rules
         console.error(
           "❌ ERRO OPERACIONAL NO ESCOPO DE GRAVAÇÃO/AUDITORIA:",
           error,
@@ -116,7 +171,6 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
         throw error;
       }
     } catch (outerError: unknown) {
-      // 🟢 DIAGNÓSTICO EXTERNO: Captura falhas de runtime globais (ex: falhas em imports ou biblioteca bcrypt)
       console.error("❌ ERRO CRÍTICO GLOBAL NO FORMULÁRIO:", outerError);
       toast.error("Erro ao processar criação de link.");
     } finally {
@@ -127,17 +181,46 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
   return (
     <form onSubmit={handleCreateLink}>
       <div className="space-y-5 py-4">
-        <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">
-            Título / Identificação Interna
-          </label>
-          <Input
-            type="text"
-            placeholder="Ex: Formulário de Inscrição — Carreta 04 (Qualifica DF)"
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            className="font-sans border-input bg-transparent text-foreground focus-visible:ring-itc-ciano"
-          />
+        <div className="grid gap-4 md:grid-cols-2">
+          {/* Título */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground">
+              Título / Identificação Interna
+            </label>
+            <Input
+              type="text"
+              placeholder="Ex: Qualifica DF"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              className="font-sans border-input bg-transparent text-foreground focus-visible:ring-itc-ciano"
+            />
+          </div>
+
+          {/* 🟢 Categoria / Tag Corporativa */}
+          <div className="space-y-2">
+            <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+              <Tags className="h-3.5 w-3.5 text-itc-ciano" /> Tag Corporativa
+            </label>
+            <Select value={categoryId} onValueChange={setCategoryId}>
+              <SelectTrigger className="border-input bg-transparent focus:ring-itc-ciano font-sans h-9">
+                <SelectValue placeholder="Sem categoria" />
+              </SelectTrigger>
+              <SelectContent className="font-sans">
+                <SelectItem value="none">Sem categoria</SelectItem>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    <div className="flex items-center gap-2">
+                      <span
+                        className="h-2.5 w-2.5 rounded-full shrink-0"
+                        style={{ backgroundColor: cat.color }}
+                      />
+                      {cat.name}
+                    </div>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
         </div>
 
         <div className="space-y-2">
@@ -170,9 +253,9 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
               className="w-full bg-transparent py-2 px-1 text-sm font-mono text-foreground outline-none"
             />
           </div>
-          <p className="text-xs text-muted-foreground font-sans">
+          <p className="text-[11px] text-muted-foreground font-sans">
             Apenas letras, números, hífens e sublinhados. Deixe em branco para
-            gerar código aleatório.
+            gerar aleatório.
           </p>
         </div>
 
@@ -189,7 +272,6 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
           <div className="space-y-2">
             <label className="text-xs font-medium text-foreground font-sans flex items-center gap-1">
               <Calendar className="h-3 w-3 text-muted-foreground" /> Expira em
-              (Data/Hora)
             </label>
             <Input
               type="datetime-local"

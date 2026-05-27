@@ -3,12 +3,28 @@
 
 import { useState, useEffect } from "react";
 import { db, auth } from "@/lib/firebase";
-import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore"; // 🟢 Timestamp importado aqui
+import {
+  doc,
+  getDoc,
+  updateDoc,
+  Timestamp,
+  collection,
+  query,
+  orderBy,
+  onSnapshot,
+} from "firebase/firestore";
 import bcrypt from "bcryptjs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
-import { Save, Link2, Type, Lock } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Save, Link2, Type, Lock, Tags } from "lucide-react";
 import { toast } from "sonner";
 import { registerLog, FirestorePrimitive } from "@/lib/audit";
 
@@ -16,6 +32,13 @@ interface EditLinkFormProps {
   linkId: string;
   onSuccess: () => void;
   onCancel: () => void;
+}
+
+// 🟢 Interface para tipagem das Categorias
+interface Category {
+  id: string;
+  name: string;
+  color: string;
 }
 
 export function EditLinkForm({
@@ -38,6 +61,36 @@ export function EditLinkForm({
   const [password, setPassword] = useState("");
   const [hadPasswordInitially, setHadPasswordInitially] = useState(false);
 
+  // 🟢 Estados das Categorias
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [categoryId, setCategoryId] = useState<string>("none");
+
+  // 🟢 Busca as categorias em tempo real ao abrir o modal
+  useEffect(() => {
+    const catRef = collection(db, "categories");
+    const q = query(catRef, orderBy("name", "asc"));
+
+    const unsubscribe = onSnapshot(
+      q,
+      (snapshot) => {
+        const catArray: Category[] = [];
+        snapshot.forEach((docSnap) => {
+          catArray.push({
+            id: docSnap.id,
+            name: docSnap.data().name,
+            color: docSnap.data().color,
+          });
+        });
+        setCategories(catArray);
+      },
+      (error) => {
+        console.error("Erro ao escutar categorias:", error);
+      },
+    );
+
+    return () => unsubscribe();
+  }, []);
+
   useEffect(() => {
     if (!linkId) return;
 
@@ -56,6 +109,11 @@ export function EditLinkForm({
             originalUrl: data.originalUrl || "",
             slug: data.slug || "",
           });
+
+          // 🟢 Preenche a categoria inicial se o link já possuir uma
+          if (data.categoryId) {
+            setCategoryId(data.categoryId);
+          }
 
           if (data.passwordHash) {
             setIsProtected(true);
@@ -90,7 +148,6 @@ export function EditLinkForm({
       const currentUser = auth.currentUser;
       const docRef = doc(db, "links", linkId);
 
-      // 🟢 O Timestamp foi adicionado à tipagem permitida neste objeto
       const updateFields: Record<string, string | null | boolean | Timestamp> =
         {
           title: formData.title,
@@ -113,6 +170,31 @@ export function EditLinkForm({
         hasChanges = true;
       }
 
+      // 🟢 Validação e Diff de Mudança de Categoria para a Auditoria
+      const initialCatId = (initialData.categoryId as string) || "none";
+      let categoryChanged = false;
+
+      if (initialCatId !== categoryId) {
+        const selectedCategory = categories.find((c) => c.id === categoryId);
+
+        updateFields.categoryId = selectedCategory ? selectedCategory.id : null;
+        updateFields.categoryName = selectedCategory
+          ? selectedCategory.name
+          : null;
+        updateFields.categoryColor = selectedCategory
+          ? selectedCategory.color
+          : null;
+
+        beforeState.category =
+          (initialData.categoryName as string) || "Sem categoria";
+        afterState.category = selectedCategory
+          ? selectedCategory.name
+          : "Sem categoria";
+
+        hasChanges = true;
+        categoryChanged = true;
+      }
+
       let passwordChanged = false;
       if (!isProtected && hadPasswordInitially) {
         updateFields.passwordHash = null;
@@ -130,21 +212,21 @@ export function EditLinkForm({
         passwordChanged = true;
       }
 
-      // 🟢 AQUI ESTÁ A MÁGICA: Registrando a Data e Hora da Edição!
       if (hasChanges && currentUser) {
         updateFields.updatedBy = currentUser.uid;
         updateFields.updatedByName = currentUser.displayName || "Colaborador";
         updateFields.updatedByEmail = currentUser.email || "sistema@itcbr.xyz";
-        updateFields.updatedAt = Timestamp.now(); // Grava a hora exata no banco
+        updateFields.updatedAt = Timestamp.now();
       }
 
       await updateDoc(docRef, updateFields);
 
       if (hasChanges && currentUser) {
         let detailsMsg = `Alterou parâmetros operacionais do link /${formData.slug}.`;
-        if (passwordChanged) {
+        if (passwordChanged)
           detailsMsg += " Credenciais de proteção modificadas.";
-        }
+        if (categoryChanged)
+          detailsMsg += " Categoria corporativa (Tag) alterada."; // 🟢 Detalhe no Log
 
         await registerLog({
           action: "LINK_EDIT",
@@ -189,20 +271,50 @@ export function EditLinkForm({
         <Input
           disabled
           value={`itcbr.xyz/${formData.slug}`}
-          className="bg-muted text-muted-foreground cursor-not-allowed border-border"
+          className="bg-muted text-muted-foreground cursor-not-allowed border-border font-mono text-sm"
         />
       </div>
 
-      <div className="space-y-2">
-        <label className="text-sm font-medium flex items-center gap-2 text-foreground">
-          <Type className="h-4 w-4 text-itc-ciano" /> Identificação (Título)
-        </label>
-        <Input
-          required
-          value={formData.title}
-          onChange={(e) => setFormData({ ...formData, title: e.target.value })}
-          className="border-input focus-visible:ring-itc-ciano"
-        />
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="space-y-2">
+          <label className="text-sm font-medium flex items-center gap-2 text-foreground">
+            <Type className="h-4 w-4 text-itc-ciano" /> Identificação (Título)
+          </label>
+          <Input
+            required
+            value={formData.title}
+            onChange={(e) =>
+              setFormData({ ...formData, title: e.target.value })
+            }
+            className="border-input focus-visible:ring-itc-ciano"
+          />
+        </div>
+
+        {/* 🟢 Categoria / Tag Corporativa */}
+        <div className="space-y-2">
+          <label className="text-sm font-medium flex items-center gap-2 text-foreground">
+            <Tags className="h-4 w-4 text-itc-ciano" /> Tag Corporativa
+          </label>
+          <Select value={categoryId} onValueChange={setCategoryId}>
+            <SelectTrigger className="border-input bg-background focus:ring-itc-ciano font-sans h-9">
+              <SelectValue placeholder="Sem categoria" />
+            </SelectTrigger>
+            <SelectContent className="font-sans">
+              <SelectItem value="none">Sem categoria</SelectItem>
+              {categories.map((cat) => (
+                <SelectItem key={cat.id} value={cat.id}>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="h-2.5 w-2.5 rounded-full shrink-0"
+                      style={{ backgroundColor: cat.color }}
+                    />
+                    {cat.name}
+                  </div>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <div className="space-y-2">

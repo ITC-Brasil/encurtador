@@ -52,13 +52,13 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 
-// TanStack Table Imports
+// 🟢 Importações corrigidas e higienizadas do TanStack Table
 import {
   ColumnDef,
   flexRender,
   getCoreRowModel,
   getPaginationRowModel,
-  getSortedRowModel,
+  getSortedRowModel, // Adicionado o import que estava faltando
   SortingState,
   useReactTable,
 } from "@tanstack/react-table";
@@ -71,6 +71,11 @@ interface LinkData {
   clickCount: number;
   isActive: boolean;
   createdAt: string | Date;
+
+  // Metadados de categoria desnormalizados
+  categoryId?: string | null;
+  categoryName?: string | null;
+  categoryColor?: string | null;
 }
 
 export default function DashboardPage() {
@@ -89,7 +94,7 @@ export default function DashboardPage() {
   const [rowSelection, setRowSelection] = useState({});
   const [isDeleting, setIsDeleting] = useState(false);
 
-  // Estado para controlar o Modal Customizado de Deleção
+  // Estado para controlar o Modal de Deleção
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -129,6 +134,10 @@ export default function DashboardPage() {
                 clickCount: data.clickCount || 0,
                 isActive: data.isActive,
                 createdAt: data.createdAt,
+
+                categoryId: data.categoryId || null,
+                categoryName: data.categoryName || null,
+                categoryColor: data.categoryColor || null,
               });
             });
 
@@ -214,12 +223,44 @@ export default function DashboardPage() {
     },
     {
       accessorKey: "title",
-      header: "Identificação",
-      cell: ({ row }) => (
-        <div className="font-medium text-foreground font-sans">
-          {row.getValue("title")}
-        </div>
-      ),
+      header: "Identificação & Destino",
+      cell: ({ row }) => {
+        const item = row.original;
+
+        const getBadgeStyle = (hexColor: string) => {
+          const hex = hexColor.replace("#", "");
+          const r = parseInt(hex.substring(0, 2), 16);
+          const g = parseInt(hex.substring(2, 4), 16);
+          const b = parseInt(hex.substring(4, 6), 16);
+          return {
+            backgroundColor: `rgba(${r}, ${g}, ${b}, 0.12)`,
+            borderColor: `rgba(${r}, ${g}, ${b}, 0.35)`,
+            color: hexColor,
+          };
+        };
+
+        return (
+          <div className="flex flex-col gap-1 py-0.5 max-w-70 md:max-w-100">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-medium text-foreground font-sans text-sm truncate block">
+                {item.title}
+              </span>
+
+              {item.categoryName && item.categoryColor && (
+                <span
+                  style={getBadgeStyle(item.categoryColor)}
+                  className="inline-flex items-center text-[10px] font-semibold tracking-wide px-2 py-0.5 rounded border select-none font-sans uppercase"
+                >
+                  {item.categoryName}
+                </span>
+              )}
+            </div>
+            <span className="text-xs text-muted-foreground truncate block max-w-full font-sans">
+              {item.originalUrl}
+            </span>
+          </div>
+        );
+      },
     },
     {
       accessorKey: "slug",
@@ -327,7 +368,28 @@ export default function DashboardPage() {
 
   if (loading) {
     return (
-      <div className="flex h-screen w-full items-center justify-center font-sans text-muted-foreground bg-background">
+      <div className="flex h-screen w-full items-center justify-center font-sans text-muted-foreground bg-background gap-2">
+        <svg
+          className="animate-spin h-4 w-4 text-itc-ciano"
+          xmlns="http://www.w3.org/2000/svg"
+          fill="none"
+          viewBox="0 0 24 24"
+        >
+          <circle
+            className="opacity-25"
+            cx="12"
+            cy="12"
+            r="10"
+            stroke="currentColor"
+            strokeWidth="4"
+          />
+          <path
+            className="opacity-75"
+            fill="currentColor"
+            fillRule="evenodd"
+            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+          />
+        </svg>
         Carregando painel ITC...
       </div>
     );
