@@ -31,7 +31,6 @@ import {
   MapPin,
   Smartphone,
   Sliders,
-  Loader2,
   History,
   Calendar,
   User,
@@ -123,7 +122,6 @@ export default function LinkDetailsPage({
   const router = useRouter();
   const resolvedParams = use(params);
 
-  const [loading, setLoading] = useState(true);
   const [linkData, setLinkData] = useState<LinkDetail | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
   const [isToggling, setIsToggling] = useState(false);
@@ -256,7 +254,6 @@ export default function LinkDetailsPage({
         console.error("Erro ao buscar detalhes analíticos:", error);
         toast.error("Falha ao carregar informações de telemetria.");
       } finally {
-        setLoading(false);
       }
     });
 
