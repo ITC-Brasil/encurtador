@@ -31,7 +31,7 @@ export interface AuditLog {
     before: Record<string, FirestorePrimitive>;
     after: Record<string, FirestorePrimitive>;
   };
-  createdAt?: FieldValue; // <-- Corrigido aqui: trocado 'any' pelo tipo real do Firestore
+  timestamp?: FieldValue; // 🟢 Alterado de createdAt para timestamp para casar com a página visual
 }
 
 /**
@@ -42,7 +42,7 @@ export async function registerLog(log: AuditLog): Promise<void> {
     const auditCollection = collection(db, "audit_logs");
     await addDoc(auditCollection, {
       ...log,
-      createdAt: serverTimestamp(),
+      timestamp: serverTimestamp(), // 🟢 Alterado de createdAt para timestamp
     });
   } catch (error) {
     // Falhas no log não devem derrubar a operação principal do usuário,

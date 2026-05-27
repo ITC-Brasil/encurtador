@@ -2,7 +2,7 @@
 "use client";
 
 import { useState } from "react";
-import { db } from "@/lib/firebase";
+import { db, auth } from "@/lib/firebase"; // 🟢 Importado auth para capturar sessão síncrona
 import { doc, setDoc, Timestamp } from "firebase/firestore";
 import bcrypt from "bcryptjs";
 import { Input } from "@/components/ui/input";
@@ -14,12 +14,12 @@ import { registerLog } from "@/lib/audit";
 import { User } from "firebase/auth";
 
 interface NewLinkFormProps {
-  user: User | null; // <-- Recebe o user completo para metadados de auditoria
+  user: User | null; // Mantido por compatibilidade de assinatura de componente
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-export function NewLinkForm({ user, onSuccess, onCancel }: NewLinkFormProps) {
+export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
   const [submitting, setSubmitting] = useState(false);
   const [title, setTitle] = useState("");
   const [originalUrl, setOriginalUrl] = useState("");
@@ -45,44 +45,48 @@ export function NewLinkForm({ user, onSuccess, onCancel }: NewLinkFormProps) {
 
     setSubmitting(true);
     try {
+      // 🟢 Captura o usuário atual diretamente do estado nativo síncrono do Firebase Auth
+      const currentUser = auth.currentUser;
+
       let finalSlug = slug
         .trim()
         .toLowerCase()
         .replace(/[^a-z0-9_-]/g, "");
       if (!finalSlug) finalSlug = generateRandomSlug();
 
-      // Hash da senha (se existir) com 10 rounds de salt
       const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
+      // Montagem do payload com os metadados completos de propriedade
       const linkPayload = {
         title: title.trim() || "Link Sem Título",
         originalUrl: originalUrl.trim(),
         slug: finalSlug,
         clickCount: 0,
         isActive: true,
-        isDeleted: false, // 🟢 Correção: Garante conformidade imediata com a query da Dashboard
-        createdBy: user?.uid || null,
+        isDeleted: false,
+        createdBy: currentUser?.uid || null,
+        createdByName: currentUser?.displayName || "Colaborador", // 🟢 Adicionado para persistência estendida
+        createdByEmail: currentUser?.email || "sistema@itcbr.xyz", // 🟢 Adicionado para persistência estendida
         createdAt: Timestamp.now(),
         expiresAt: expiresAt ? Timestamp.fromDate(new Date(expiresAt)) : null,
         maxClicks: maxClicks ? parseInt(maxClicks, 10) : null,
         passwordHash: hashedPassword,
       };
 
-      // --- SOLUÇÃO CONTRA RACE CONDITION (ATOMICIDADE NATIVA) ---
       const slugRef = doc(db, "links", finalSlug);
 
       try {
-        // Usa a atomicidade do Firestore definindo o slug como Document ID
+        // Gravação atômica do link curto
         await setDoc(slugRef, linkPayload, { merge: false });
 
-        // 📝 DISPARO DE AUDITORIA: Registra a trilha imutável no sistema
-        if (user) {
+        // 📝 DISPARO DE AUDITORIA: Trilha de segurança imutável alimentada pelo auth do Firebase
+        if (currentUser) {
           await registerLog({
             action: "LINK_CREATE",
             performedBy: {
-              uid: user.uid,
-              name: user.displayName || "Colaborador",
-              email: user.email || "sem-email@itcbr.xyz",
+              uid: currentUser.uid,
+              name: currentUser.displayName || "Colaborador",
+              email: currentUser.email || "sem-email@itcbr.xyz",
             },
             targetId: finalSlug,
             details: `Criou o link curto /${finalSlug} apontando para ${originalUrl.trim()}`,
@@ -92,19 +96,29 @@ export function NewLinkForm({ user, onSuccess, onCancel }: NewLinkFormProps) {
         toast.success("Link criado com sucesso!");
         onSuccess();
       } catch (error: unknown) {
+        // 🟢 DIAGNÓSTICO INTERNO: Expõe falhas ocultas ou bloqueios de Security Rules
+        console.error(
+          "❌ ERRO OPERACIONAL NO ESCOPO DE GRAVAÇÃO/AUDITORIA:",
+          error,
+        );
+
         const firebaseError = error as { code?: string };
 
         if (
           firebaseError?.code === "permission-denied" ||
           firebaseError?.code === "already-exists"
         ) {
-          toast.error("Este slug já está em uso.");
+          toast.error(
+            "Ação recusada: Verifique se este slug já existe ou se há restrições de escrita.",
+          );
           return;
         }
         throw error;
       }
-    } catch {
-      toast.error("Erro ao criar link.");
+    } catch (outerError: unknown) {
+      // 🟢 DIAGNÓSTICO EXTERNO: Captura falhas de runtime globais (ex: falhas em imports ou biblioteca bcrypt)
+      console.error("❌ ERRO CRÍTICO GLOBAL NO FORMULÁRIO:", outerError);
+      toast.error("Erro ao processar criação de link.");
     } finally {
       setSubmitting(false);
     }
