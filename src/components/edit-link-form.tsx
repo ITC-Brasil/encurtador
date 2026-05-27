@@ -2,14 +2,15 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { db } from "@/lib/firebase";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
-import bcrypt from "bcryptjs"; // <-- Importação do Bcrypt
+import { db, auth } from "@/lib/firebase";
+import { doc, getDoc, updateDoc, Timestamp } from "firebase/firestore"; // 🟢 Timestamp importado aqui
+import bcrypt from "bcryptjs";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Save, Link2, Type, Lock } from "lucide-react";
 import { toast } from "sonner";
+import { registerLog, FirestorePrimitive } from "@/lib/audit";
 
 interface EditLinkFormProps {
   linkId: string;
@@ -24,6 +25,8 @@ export function EditLinkForm({
 }: EditLinkFormProps) {
   const [loading, setLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+
+  const [initialData, setInitialData] = useState<Record<string, unknown>>({});
 
   const [formData, setFormData] = useState({
     title: "",
@@ -45,6 +48,9 @@ export function EditLinkForm({
 
         if (docSnap.exists()) {
           const data = docSnap.data();
+
+          setInitialData(data);
+
           setFormData({
             title: data.title || "",
             originalUrl: data.originalUrl || "",
@@ -81,27 +87,87 @@ export function EditLinkForm({
 
     setIsSaving(true);
     try {
+      const currentUser = auth.currentUser;
       const docRef = doc(db, "links", linkId);
 
-      const updateFields: Record<string, string | null> = {
-        title: formData.title,
-        originalUrl: formData.originalUrl,
-      };
+      // 🟢 O Timestamp foi adicionado à tipagem permitida neste objeto
+      const updateFields: Record<string, string | null | boolean | Timestamp> =
+        {
+          title: formData.title,
+          originalUrl: formData.originalUrl,
+        };
 
-      if (!isProtected) {
+      const beforeState: Record<string, FirestorePrimitive> = {};
+      const afterState: Record<string, FirestorePrimitive> = {};
+      let hasChanges = false;
+
+      if (initialData.title !== updateFields.title) {
+        beforeState.title = (initialData.title as string) || "Sem título";
+        afterState.title = updateFields.title as string;
+        hasChanges = true;
+      }
+
+      if (initialData.originalUrl !== updateFields.originalUrl) {
+        beforeState.originalUrl = initialData.originalUrl as string;
+        afterState.originalUrl = updateFields.originalUrl as string;
+        hasChanges = true;
+      }
+
+      let passwordChanged = false;
+      if (!isProtected && hadPasswordInitially) {
         updateFields.passwordHash = null;
-      } else if (password) {
-        // Criptografando a nova senha na edição
+        beforeState.protection = "Senha Ativada";
+        afterState.protection = "Senha Removida";
+        hasChanges = true;
+        passwordChanged = true;
+      } else if (isProtected && password) {
         updateFields.passwordHash = await bcrypt.hash(password, 10);
+        beforeState.protection = hadPasswordInitially
+          ? "Senha Alterada"
+          : "Desprotegido";
+        afterState.protection = "Nova Senha Aplicada";
+        hasChanges = true;
+        passwordChanged = true;
+      }
+
+      // 🟢 AQUI ESTÁ A MÁGICA: Registrando a Data e Hora da Edição!
+      if (hasChanges && currentUser) {
+        updateFields.updatedBy = currentUser.uid;
+        updateFields.updatedByName = currentUser.displayName || "Colaborador";
+        updateFields.updatedByEmail = currentUser.email || "sistema@itcbr.xyz";
+        updateFields.updatedAt = Timestamp.now(); // Grava a hora exata no banco
       }
 
       await updateDoc(docRef, updateFields);
 
+      if (hasChanges && currentUser) {
+        let detailsMsg = `Alterou parâmetros operacionais do link /${formData.slug}.`;
+        if (passwordChanged) {
+          detailsMsg += " Credenciais de proteção modificadas.";
+        }
+
+        await registerLog({
+          action: "LINK_EDIT",
+          performedBy: {
+            uid: currentUser.uid,
+            name: currentUser.displayName || "Colaborador",
+            email: currentUser.email || "sem-email@itcbr.xyz",
+          },
+          targetId: formData.slug,
+          details: detailsMsg,
+          changes: {
+            before: beforeState,
+            after: afterState,
+          },
+        });
+      }
+
       toast.success("Link atualizado com sucesso!");
       onSuccess();
     } catch (err) {
-      console.error("Erro ao atualizar:", err);
-      toast.error("Erro ao atualizar o link.");
+      console.error("❌ ERRO CRÍTICO NA GRAVAÇÃO OU AUDITORIA:", err);
+      toast.error("Erro ao processar atualização do link.");
+    } finally {
       setIsSaving(false);
     }
   };

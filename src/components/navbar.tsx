@@ -3,10 +3,11 @@
 
 import { useState, useEffect } from "react";
 import Image from "next/image";
+import Link from "next/link"; // 🟢 Importado Link do Next.js para a logo
 import { usePathname, useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, User, signOut } from "firebase/auth";
-import { Link2, Plus, LogOut, Users } from "lucide-react";
+import { Link2, Plus, LogOut, Users, ShieldCheck } from "lucide-react"; // 🟢 ShieldCheck adicionado
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -38,6 +39,7 @@ export function Navbar() {
   // Define o título da página baseado na rota
   const getPageTitle = () => {
     if (pathname === "/dashboard") return "Dashboard";
+    if (pathname === "/dashboard/audit") return "Auditoria do Sistema"; // 🟢 Título para a Auditoria
     if (pathname.includes("/links/")) return "Detalhes do Link";
     if (pathname === "/dashboard/users") return "Gestão de Usuários";
     return "Painel";
@@ -67,7 +69,11 @@ export function Navbar() {
       <div className="max-w-7xl mx-auto px-8 h-20 flex items-center justify-between">
         {/* ESQUERDA: Logo e Título */}
         <div className="flex items-center">
-          <div className="flex items-center border-r border-border/40 pr-5 mr-5 h-8">
+          {/* 🟢 Logo transformada em Link clicável */}
+          <Link
+            href="/dashboard"
+            className="flex items-center border-r border-border/40 pr-5 mr-5 h-8 cursor-pointer hover:opacity-80 transition-opacity"
+          >
             <Image
               src="/images/logo-light.png"
               alt="ITC Brasil"
@@ -84,7 +90,7 @@ export function Navbar() {
               priority
               className="hidden dark:block w-auto h-8 object-contain"
             />
-          </div>
+          </Link>
           <h2 className="text-xl font-bold tracking-tight font-display text-foreground">
             {getPageTitle()}
           </h2>
@@ -111,12 +117,11 @@ export function Navbar() {
                   ITC Brasil.
                 </DialogDescription>
               </DialogHeader>
-              {/* Renderização do Componente Limpo */}
 
               <NewLinkForm
                 user={user}
                 onSuccess={() => {
-                  setIsDialogOpen(false); // Apenas fecha o modal suavemente!
+                  setIsDialogOpen(false);
                 }}
                 onCancel={() => setIsDialogOpen(false)}
               />
@@ -155,6 +160,16 @@ export function Navbar() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-border" />
+
+              {/* 🟢 Novo botão de Auditoria agrupado com os itens de gestão */}
+              <DropdownMenuItem
+                onClick={() => router.push("/dashboard/audit")}
+                className="cursor-pointer gap-2 font-medium py-2.5"
+              >
+                <ShieldCheck className="h-4 w-4 text-muted-foreground" />{" "}
+                Auditoria do Sistema
+              </DropdownMenuItem>
+
               <DropdownMenuItem
                 onClick={() => router.push("/dashboard/users")}
                 className="cursor-pointer gap-2 font-medium py-2.5"
@@ -162,9 +177,10 @@ export function Navbar() {
                 <Users className="h-4 w-4 text-muted-foreground" /> Gestão de
                 Usuários
               </DropdownMenuItem>
+
               <DropdownMenuItem
                 onClick={handleLogout}
-                className="text-itc-erro focus:text-itc-erro focus:bg-itc-erro/10 cursor-pointer gap-2 font-medium py-2.5"
+                className="text-itc-erro focus:text-itc-erro focus:bg-itc-erro/10 cursor-pointer gap-2 font-medium py-2.5 border-t border-border mt-1"
               >
                 <LogOut className="h-4 w-4" /> Sair
               </DropdownMenuItem>

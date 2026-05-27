@@ -41,6 +41,9 @@ import {
 import { toast } from "sonner";
 import { QRCodeSVG } from "qrcode.react";
 
+// 🟢 Utilitário de auditoria importado
+import { registerLog } from "@/lib/audit";
+
 // Importações do Recharts
 import {
   LineChart,
@@ -62,6 +65,7 @@ interface LinkDetail {
   clickCount: number;
   isActive: boolean;
   createdAt: Timestamp | string | null;
+  updatedAt?: Timestamp | string | null; // 🟢 Adicionado para exibir data da última edição
   expiresAt?: Timestamp | string | null;
   maxClicks?: number | string;
   passwordHash?: string;
@@ -116,6 +120,7 @@ export default function LinkDetailsPage({
   const [loading, setLoading] = useState(true);
   const [linkData, setLinkData] = useState<LinkDetail | null>(null);
   const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isToggling, setIsToggling] = useState(false); // Previne multi-clicks na pausa
 
   // Estados do Analytics
   const [chartData, setChartData] = useState<ChartDataPoint[]>([]);
@@ -175,7 +180,7 @@ export default function LinkDetailsPage({
           try {
             rawCity = decodeURIComponent(rawCity);
           } catch {
-            // Mantém a string bruta caso falhe o parse
+            // fallback silencioso
           }
 
           if (!rawCity || rawCity === "null" || rawCity === "undefined") {
@@ -284,16 +289,65 @@ export default function LinkDetailsPage({
   };
 
   const handleToggleActive = async () => {
+    if (isToggling) return;
+    setIsToggling(true);
     const newState = !linkData.isActive;
+
     try {
+      const currentUser = auth.currentUser;
       const docRef = doc(db, "links", linkData.id);
-      await updateDoc(docRef, { isActive: newState });
-      setLinkData({ ...linkData, isActive: newState });
+
+      const updatePayload: Record<string, string | boolean | Timestamp> = {
+        isActive: newState,
+      };
+      // Atualiza também os metadados de quem modificou
+      if (currentUser) {
+        updatePayload.updatedBy = currentUser.uid;
+        updatePayload.updatedByName = currentUser.displayName || "Colaborador";
+        updatePayload.updatedByEmail = currentUser.email || "sistema@itcbr.xyz";
+        updatePayload.updatedAt = Timestamp.now();
+      }
+
+      await updateDoc(docRef, updatePayload);
+
+      // 📝 DISPARO DE AUDITORIA: Registra a pausa/ativação do link
+      if (currentUser) {
+        await registerLog({
+          action: "LINK_EDIT",
+          performedBy: {
+            uid: currentUser.uid,
+            name: currentUser.displayName || "Colaborador",
+            email: currentUser.email || "sem-email@itcbr.xyz",
+          },
+          targetId: linkData.slug,
+          details: `O link /${linkData.slug} foi ${newState ? "ativado (retomou o tráfego)" : "pausado (tráfego suspenso)"}.`,
+          changes: {
+            before: {
+              status: linkData.isActive
+                ? "Operacional (Ativo)"
+                : "Suspenso (Pausado)",
+            },
+            after: {
+              status: newState ? "Operacional (Ativo)" : "Suspenso (Pausado)",
+            },
+          },
+        });
+      }
+
+      setLinkData({
+        ...linkData,
+        isActive: newState,
+        updatedByName: currentUser?.displayName || "Colaborador",
+        updatedAt: Timestamp.now(),
+      });
+
       toast.success(
         `O link foi ${newState ? "ativado" : "suspenso"} com sucesso.`,
       );
     } catch {
       toast.error("Erro operacional ao alterar o status do link.");
+    } finally {
+      setIsToggling(false);
     }
   };
 
@@ -309,65 +363,63 @@ export default function LinkDetailsPage({
 
       {/* BLOCO SUPERIOR: Identidade e Auditoria */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch">
-        {/* LADO ESQUERDO (2 Colunas): Dados de Identificação */}
-        <div className="lg:col-span-2 flex flex-col gap-4 justify-between">
-          <Card
-            className={`bg-card border-border shadow-sm flex flex-col justify-center flex-1 ${cardHoverClass}`}
-          >
-            <CardHeader className="pb-3 pt-5 border-b border-border/40">
-              <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5 font-sans">
-                <Tag className="h-3.5 w-3.5" /> Painel de Controle Operacional
-              </CardTitle>
-            </CardHeader>
-            <CardContent className="pt-5 pb-5">
-              <div className="space-y-2">
-                <h1 className="text-3xl font-bold tracking-tight text-foreground font-sans break-all">
-                  {linkData.title || "Link Sem Título"}
-                </h1>
+        {/* LADO ESQUERDO (2 Colunas): Dados de Identificação com altura perfeitamente nivelada */}
+        <Card
+          className={`lg:col-span-2 bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
+        >
+          <CardHeader className="pb-3 pt-5 border-b border-border/40 shrink-0">
+            <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5 font-sans">
+              <Tag className="h-3.5 w-3.5" /> Painel de Controle Operacional
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="pt-5 pb-5 flex-1 flex flex-col justify-center">
+            <div className="space-y-2">
+              <h1 className="text-3xl font-bold tracking-tight text-foreground font-sans break-all">
+                {linkData.title || "Link Sem Título"}
+              </h1>
 
-                <div className="flex flex-wrap items-center justify-between gap-4 pt-4 mt-2">
-                  <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-4 pt-4 mt-2">
+                <div className="flex items-center gap-2">
+                  <Badge
+                    className={`border-none text-[10px] font-bold px-2.5 py-0.5 rounded ${
+                      linkData.isActive
+                        ? "bg-itc-sucesso/10 text-itc-sucesso"
+                        : "bg-itc-erro/10 text-itc-erro"
+                    }`}
+                  >
+                    {linkData.isActive ? "Ativo" : "Pausado"}
+                  </Badge>
+                  {linkData.passwordHash && (
                     <Badge
-                      className={`border-none text-[10px] font-bold px-2.5 py-0.5 rounded ${
-                        linkData.isActive
-                          ? "bg-itc-sucesso/10 text-itc-sucesso"
-                          : "bg-itc-erro/10 text-itc-erro"
-                      }`}
+                      variant="outline"
+                      className="text-amber-500 border-amber-500/30 flex items-center gap-1 bg-amber-500/10 text-[10px] px-2 py-0.5"
                     >
-                      {linkData.isActive ? "Ativo" : "Desativado"}
+                      <ShieldAlert className="h-3 w-3" /> Senha Ativa
                     </Badge>
-                    {linkData.passwordHash && (
-                      <Badge
-                        variant="outline"
-                        className="text-amber-500 border-amber-500/30 flex items-center gap-1 bg-amber-500/10 text-[10px] px-2 py-0.5"
-                      >
-                        <ShieldAlert className="h-3 w-3" /> Senha Ativa
-                      </Badge>
-                    )}
-                  </div>
+                  )}
+                </div>
 
-                  <div className="flex items-center gap-2 text-sm font-sans">
-                    <span className="text-itc-ciano font-bold text-xs uppercase tracking-wider">
-                      Volume de Tráfego:
+                <div className="flex items-center gap-2 text-sm font-sans">
+                  <span className="text-itc-ciano font-bold text-xs uppercase tracking-wider">
+                    Volume de Tráfego:
+                  </span>
+                  <span className="text-foreground font-bold text-base bg-accent/40 px-3 py-0.5 rounded-md border border-border/40">
+                    {linkData.clickCount || 0}{" "}
+                    <span className="text-xs font-normal text-muted-foreground">
+                      cliques
                     </span>
-                    <span className="text-foreground font-bold text-base bg-accent/40 px-3 py-0.5 rounded-md border border-border/40">
-                      {linkData.clickCount || 0}{" "}
-                      <span className="text-xs font-normal text-muted-foreground">
-                        cliques
-                      </span>
-                    </span>
-                  </div>
+                  </span>
                 </div>
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            </div>
+          </CardContent>
+        </Card>
 
         {/* LADO DIREITO (1 Coluna Esticada): Cronologia e Auditoria */}
         <Card
-          className={`lg:col-span-1 bg-card border-border shadow-sm flex flex-col justify-between ${cardHoverClass}`}
+          className={`lg:col-span-1 bg-card border-border shadow-sm flex flex-col ${cardHoverClass}`}
         >
-          <CardHeader className="pb-3 pt-5 border-b border-border/40">
+          <CardHeader className="pb-3 pt-5 border-b border-border/40 shrink-0">
             <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5 font-sans">
               <History className="h-3.5 w-3.5" /> Histórico & Cronologia
             </CardTitle>
@@ -404,8 +456,12 @@ export default function LinkDetailsPage({
                     <span className="text-sm font-bold text-foreground block">
                       {linkData.updatedByName}
                     </span>
-                    <span className="text-xs text-muted-foreground font-medium">
-                      Alterações operacionais recentes
+                    {/* 🟢 Agora exibe a data e hora exata da última edição e não apenas o texto */}
+                    <span className="text-xs text-muted-foreground font-medium flex items-center gap-1 mt-0.5">
+                      <Calendar className="h-3 w-3" />{" "}
+                      {linkData.updatedAt
+                        ? formatarDataSegura(linkData.updatedAt)
+                        : "Alterações recentes"}
                     </span>
                   </div>
                 </div>
@@ -465,9 +521,14 @@ export default function LinkDetailsPage({
                 <Button
                   variant={linkData.isActive ? "destructive" : "default"}
                   onClick={handleToggleActive}
+                  disabled={isToggling}
                   className="font-sans text-xs h-8"
                 >
-                  {linkData.isActive ? "Pausar Link" : "Ativar Link"}
+                  {isToggling
+                    ? "Processando..."
+                    : linkData.isActive
+                      ? "Pausar Link"
+                      : "Ativar Link"}
                 </Button>
               </div>
             </CardContent>
@@ -695,6 +756,7 @@ export default function LinkDetailsPage({
               linkId={linkData.id}
               onSuccess={() => {
                 setIsEditOpen(false);
+                // Pequeno recarregamento para trazer os novos dados
                 window.location.reload();
               }}
               onCancel={() => setIsEditOpen(false)}

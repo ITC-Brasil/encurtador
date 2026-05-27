@@ -57,7 +57,7 @@ import {
 
 interface AuditLogData {
   id: string;
-  action: "LINK_CREATE" | "LINK_UPDATE" | "LINK_DELETE" | string;
+  action: "LINK_CREATE" | "LINK_UPDATE" | "LINK_EDIT" | "LINK_DELETE" | string;
   performedBy: {
     uid: string;
     name: string;
@@ -67,8 +67,8 @@ interface AuditLogData {
   details: string;
   timestamp: Date;
   changes?: {
-    before?: Record<string, unknown>; // 🟢 Removido 'any' e tipado corretamente
-    after?: Record<string, unknown>; // 🟢 Removido 'any' e tipado corretamente
+    before?: Record<string, unknown>;
+    after?: Record<string, unknown>;
   } | null;
 }
 
@@ -142,7 +142,7 @@ export default function AuditPage() {
       cell: ({ row }) => {
         const date = row.getValue("timestamp") as Date;
         return (
-          <div className="font-mono text-xs text-muted-foreground whitespace-nowrap">
+          <div className="font-mono text-[11px] text-muted-foreground whitespace-nowrap">
             {date instanceof Date
               ? date.toLocaleDateString("pt-BR")
               : "Data inválida"}
@@ -162,7 +162,7 @@ export default function AuditPage() {
           badgeStyle =
             "bg-emerald-500/10 text-itc-sucesso ring-1 ring-emerald-500/20";
           label = "Criação";
-        } else if (action === "LINK_UPDATE") {
+        } else if (action === "LINK_UPDATE" || action === "LINK_EDIT") {
           badgeStyle =
             "bg-amber-500/10 text-amber-500 ring-1 ring-amber-500/20";
           label = "Edição";
@@ -192,6 +192,18 @@ export default function AuditPage() {
         );
       },
     },
+    // 🟢 Nova Coluna: Slug adicionado aqui
+    {
+      accessorKey: "targetId",
+      header: "Slug",
+      cell: ({ row }) => {
+        return (
+          <code className="font-mono text-[12px] text-itc-ciano bg-accent/30 px-2 py-0.5 rounded border border-border/40 whitespace-nowrap truncate max-w-32 inline-block">
+            /{row.getValue("targetId")}
+          </code>
+        );
+      },
+    },
     {
       id: "actions",
       header: () => <div className="text-right">Detalhes</div>,
@@ -203,10 +215,10 @@ export default function AuditPage() {
               variant="outline"
               size="sm"
               onClick={() => handleOpenDetails(log)}
-              className="h-8 text-xs font-sans border-border hover:bg-accent text-foreground gap-1.5 inline-flex items-center"
+              className="h-8 text-xs font-sans border-border hover:bg-accent text-foreground gap-1.5 inline-flex items-center whitespace-nowrap"
             >
               <Eye className="h-3.5 w-3.5 text-itc-ciano" />
-              Mais Informações
+              Mais Info
             </Button>
           </div>
         );
@@ -238,7 +250,7 @@ export default function AuditPage() {
   }
 
   return (
-    <div className="flex-1 p-8 max-w-4xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
+    <div className="flex-1 p-8 max-w-5xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
       {/* Botão de Voltar */}
       <Button
         variant="ghost"
@@ -262,7 +274,7 @@ export default function AuditPage() {
         </div>
       </div>
 
-      {/* Tabela Clean - 🟢 Sem divs extras gerando conflitos de Hydration */}
+      {/* Tabela Clean */}
       <Card className="bg-card border-border shadow-sm overflow-hidden">
         <CardHeader className="pb-3 pt-4 border-b border-border/40">
           <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5">
@@ -277,24 +289,34 @@ export default function AuditPage() {
             </div>
           ) : (
             <div className="w-full">
-              <Table>
+              <Table className="w-full table-fixed">
                 <TableHeader className="bg-accent/10">
                   {table.getHeaderGroups().map((headerGroup) => (
                     <TableRow
                       key={headerGroup.id}
                       className="border-border hover:bg-transparent"
                     >
-                      {headerGroup.headers.map((header) => (
-                        <TableHead
-                          key={header.id}
-                          className="text-muted-foreground font-bold text-xs h-10 px-6"
-                        >
-                          {flexRender(
-                            header.column.columnDef.header,
-                            header.getContext(),
-                          )}
-                        </TableHead>
-                      ))}
+                      {headerGroup.headers.map((header, idx) => {
+                        // 🟢 Nova distribuição matemática de larguras para incluir o Slug
+                        const widths = [
+                          "w-[14%]",
+                          "w-[12%]",
+                          "w-[30%]",
+                          "w-[24%]",
+                          "w-[20%]",
+                        ];
+                        return (
+                          <TableHead
+                            key={header.id}
+                            className={`text-muted-foreground font-bold text-xs h-10 px-6 ${widths[idx] || ""}`}
+                          >
+                            {flexRender(
+                              header.column.columnDef.header,
+                              header.getContext(),
+                            )}
+                          </TableHead>
+                        );
+                      })}
                     </TableRow>
                   ))}
                 </TableHeader>
@@ -307,7 +329,7 @@ export default function AuditPage() {
                       {row.getVisibleCells().map((cell) => (
                         <TableCell
                           key={cell.id}
-                          className="px-6 py-2 align-middle"
+                          className="px-6 py-2 align-middle overflow-hidden"
                         >
                           {flexRender(
                             cell.column.columnDef.cell,
@@ -352,7 +374,7 @@ export default function AuditPage() {
         </CardContent>
       </Card>
 
-      {/* 🟢 DIALOG MODAL: Detalhes Profundos e Imutáveis do Log */}
+      {/* DIALOG MODAL: Detalhes Profundos e Imutáveis do Log */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
         <DialogContent className="bg-card border-border max-w-lg w-full text-foreground p-6 font-sans">
           <DialogHeader className="border-b border-border/40 pb-3">
@@ -421,33 +443,35 @@ export default function AuditPage() {
                 </div>
               </div>
 
-              {/* Seção 3: Histórico de Alterações de Escopo (LINK_UPDATE) */}
-              {selectedLog.action === "LINK_UPDATE" && selectedLog.changes && (
-                <div className="space-y-2">
-                  <span className="text-muted-foreground font-semibold uppercase tracking-wider text-[10px] flex items-center gap-1">
-                    <Edit className="h-3 w-3 text-amber-500" /> Modificações de
-                    Estado Detectadas
-                  </span>
-                  <div className="grid grid-cols-2 gap-2 font-mono text-[11px] overflow-hidden">
-                    <div className="bg-red-500/5 border border-red-500/20 rounded p-2 space-y-1">
-                      <span className="text-itc-erro font-bold block text-[10px] uppercase border-b border-red-500/10 pb-0.5">
-                        Antes
-                      </span>
-                      <pre className="wrap-break-word text-muted-foreground max-h-30 overflow-y-auto">
-                        {JSON.stringify(selectedLog.changes.before, null, 2)}
-                      </pre>
-                    </div>
-                    <div className="bg-emerald-500/5 border border-emerald-500/20 rounded p-2 space-y-1">
-                      <span className="text-itc-sucesso font-bold block text-[10px] uppercase border-b border-emerald-500/10 pb-0.5">
-                        Depois
-                      </span>
-                      <pre className="wrap-break-word text-foreground max-h-30 overflow-y-auto">
-                        {JSON.stringify(selectedLog.changes.after, null, 2)}
-                      </pre>
+              {/* Seção 3: Histórico de Alterações de Escopo */}
+              {(selectedLog.action === "LINK_UPDATE" ||
+                selectedLog.action === "LINK_EDIT") &&
+                selectedLog.changes && (
+                  <div className="space-y-2">
+                    <span className="text-muted-foreground font-semibold uppercase tracking-wider text-[10px] flex items-center gap-1">
+                      <Edit className="h-3 w-3 text-amber-500" /> Modificações
+                      de Estado Detectadas
+                    </span>
+                    <div className="grid grid-cols-2 gap-2 font-mono text-[11px] overflow-hidden">
+                      <div className="bg-red-500/5 border border-red-500/20 rounded p-2 space-y-1">
+                        <span className="text-itc-erro font-bold block text-[10px] uppercase border-b border-red-500/10 pb-0.5">
+                          Antes
+                        </span>
+                        <pre className="wrap-break-word text-muted-foreground max-h-30 overflow-y-auto">
+                          {JSON.stringify(selectedLog.changes.before, null, 2)}
+                        </pre>
+                      </div>
+                      <div className="bg-emerald-500/5 border border-emerald-500/20 rounded p-2 space-y-1">
+                        <span className="text-itc-sucesso font-bold block text-[10px] uppercase border-b border-emerald-500/10 pb-0.5">
+                          Depois
+                        </span>
+                        <pre className="wrap-break-word text-foreground max-h-30 overflow-y-auto">
+                          {JSON.stringify(selectedLog.changes.after, null, 2)}
+                        </pre>
+                      </div>
                     </div>
                   </div>
-                </div>
-              )}
+                )}
             </div>
           )}
 
