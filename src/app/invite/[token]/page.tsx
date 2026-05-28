@@ -38,7 +38,6 @@ export default function InvitePage({
   const [errorMessage, setErrorMessage] = useState("");
   const [isSigningIn, setIsSigningIn] = useState(false);
 
-  // Valida o token ao carregar a página
   useEffect(() => {
     const validateToken = async () => {
       try {
@@ -75,7 +74,7 @@ export default function InvitePage({
       const result = await signInWithPopup(auth, googleProvider);
       const user = result.user;
 
-      // 2. Verificar se o e-mail do Google bate de forma idêntica com o e-mail do convite
+      // 2. Verificar se o e-mail do Google bate com o e-mail do convite
       if (user.email?.toLowerCase() !== inviteData.email.toLowerCase()) {
         await auth.signOut();
         toast.error(
@@ -85,7 +84,7 @@ export default function InvitePage({
         return;
       }
 
-      // 3. Criar documento do usuário no Firestore utilizando obrigatoriamente o UID como chave
+      // 3. Criar documento do usuário no Firestore com o UID como chave
       await setDoc(doc(db, "users", user.uid), {
         name: user.displayName || inviteData.email,
         email: user.email,
@@ -97,10 +96,14 @@ export default function InvitePage({
         createdAt: serverTimestamp(),
       });
 
-      // 4. Marcar convite como utilizado chamando a rota de infraestrutura interna
+      // 4. Marcar convite como utilizado — Bearer Token obrigatório para a rota autenticada
+      const idToken = await user.getIdToken();
       await fetch(`/api/invites/use`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${idToken}`,
+        },
         body: JSON.stringify({
           token: resolvedParams.token,
           usedBy: user.uid,
@@ -116,7 +119,6 @@ export default function InvitePage({
     }
   };
 
-  // Estado visual: Carregando/Validando o Token
   if (status === "loading") {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
@@ -130,7 +132,6 @@ export default function InvitePage({
     );
   }
 
-  // Estado visual: Token inválido, expirado ou revogado
   if (status === "invalid") {
     return (
       <div className="relative flex h-screen w-full items-center justify-center bg-transparent px-4">
@@ -160,7 +161,6 @@ export default function InvitePage({
     );
   }
 
-  // Estado visual: Token validado — Exibe o fluxo para associar a conta
   return (
     <div className="relative flex h-screen w-full items-center justify-center bg-transparent px-4">
       <div className="absolute top-4 right-4">
@@ -184,7 +184,6 @@ export default function InvitePage({
         </CardHeader>
 
         <CardContent className="space-y-4 pb-8 px-8">
-          {/* E-mail corporativo pré-definido amarrado ao Token */}
           <div className="rounded-md bg-muted/60 border border-border px-4 py-3">
             <p className="text-[10px] uppercase font-bold tracking-wider text-muted-foreground font-sans mb-1">
               Endereço de E-mail Autorizado

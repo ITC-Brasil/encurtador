@@ -197,10 +197,9 @@ export default function LinkDetailsPage({
           if (!rawCity || rawCity === "null" || rawCity === "undefined") {
             rawCity = "Não identificada";
           }
-          groupedCities[rawCity] =
-            (groupedCities[
-              groupedCities[rawCity] ? rawCity : "Não identificada"
-            ] || 0) + 1;
+          // 🔧 Correção: incremento direto sem lógica de chave condicional que causava
+          // reclassificação incorreta de cidades com contador ainda zerado (falsy)
+          groupedCities[rawCity] = (groupedCities[rawCity] || 0) + 1;
 
           const ua = clickData.userAgent || "";
           if (
@@ -253,7 +252,6 @@ export default function LinkDetailsPage({
       } catch (error) {
         console.error("Erro ao buscar detalhes analíticos:", error);
         toast.error("Falha ao carregar informações de telemetria.");
-      } finally {
       }
     });
 

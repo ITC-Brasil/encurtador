@@ -9,6 +9,8 @@ import {
   orderBy,
   limit,
   onSnapshot,
+  getDoc,
+  doc,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
@@ -73,6 +75,8 @@ interface AuditLogData {
 }
 
 export default function AuditPage() {
+  "use no memo";
+
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [logs, setLogs] = useState<AuditLogData[]>([]);
@@ -84,44 +88,53 @@ export default function AuditPage() {
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
         router.push("/login");
-      } else {
-        const logsRef = collection(db, "audit_logs");
-        const q = query(logsRef, orderBy("timestamp", "desc"), limit(100));
-
-        unsubscribeSnapshot = onSnapshot(
-          q,
-          (querySnapshot) => {
-            const logsArray: AuditLogData[] = [];
-            querySnapshot.forEach((doc) => {
-              const data = doc.data();
-              const rawTimestamp = data.timestamp;
-              const parsedDate = rawTimestamp?.toDate
-                ? rawTimestamp.toDate()
-                : new Date(rawTimestamp || Date.now());
-
-              logsArray.push({
-                id: doc.id,
-                action: data.action,
-                performedBy: data.performedBy,
-                targetId: data.targetId,
-                details: data.details,
-                timestamp: parsedDate,
-                changes: data.changes || null,
-              });
-            });
-            setLogs(logsArray);
-            setLoading(false);
-          },
-          (error) => {
-            console.error("Erro ao escutar logs de auditoria:", error);
-            toast.error("Falha ao sincronizar logs de segurança.");
-            setLoading(false);
-          },
-        );
+        return;
       }
+
+      // 🔒 Verifica se o usuário autenticado é Administrador
+      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+      if (userDoc.data()?.role !== "Administrador") {
+        toast.error("Acesso restrito a administradores.");
+        router.push("/dashboard");
+        return;
+      }
+
+      const logsRef = collection(db, "audit_logs");
+      const q = query(logsRef, orderBy("timestamp", "desc"), limit(100));
+
+      unsubscribeSnapshot = onSnapshot(
+        q,
+        (querySnapshot) => {
+          const logsArray: AuditLogData[] = [];
+          querySnapshot.forEach((doc) => {
+            const data = doc.data();
+            const rawTimestamp = data.timestamp;
+            const parsedDate = rawTimestamp?.toDate
+              ? rawTimestamp.toDate()
+              : new Date(rawTimestamp || Date.now());
+
+            logsArray.push({
+              id: doc.id,
+              action: data.action,
+              performedBy: data.performedBy,
+              targetId: data.targetId,
+              details: data.details,
+              timestamp: parsedDate,
+              changes: data.changes || null,
+            });
+          });
+          setLogs(logsArray);
+          setLoading(false);
+        },
+        (error) => {
+          console.error("Erro ao escutar logs de auditoria:", error);
+          toast.error("Falha ao sincronizar logs de segurança.");
+          setLoading(false);
+        },
+      );
     });
 
     return () => {
@@ -192,7 +205,6 @@ export default function AuditPage() {
         );
       },
     },
-    // 🟢 Nova Coluna: Slug adicionado aqui
     {
       accessorKey: "targetId",
       header: "Slug",
@@ -226,6 +238,7 @@ export default function AuditPage() {
     },
   ];
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: logs,
     columns,
@@ -297,7 +310,6 @@ export default function AuditPage() {
                       className="border-border hover:bg-transparent"
                     >
                       {headerGroup.headers.map((header, idx) => {
-                        // 🟢 Nova distribuição matemática de larguras para incluir o Slug
                         const widths = [
                           "w-[14%]",
                           "w-[12%]",
@@ -437,7 +449,7 @@ export default function AuditPage() {
                   <span className="text-muted-foreground block font-medium">
                     Histórico Resumido
                   </span>
-                  <p className="text-foreground leading-relaxed font-normal bg-background/50 p-2 rounded border border-border/20 wrap-break-word">
+                  <p className="text-foreground leading-relaxed font-normal bg-background/50 p-2 rounded border border-border/20 wrap-break-words">
                     {selectedLog.details}
                   </p>
                 </div>
@@ -457,7 +469,8 @@ export default function AuditPage() {
                         <span className="text-itc-erro font-bold block text-[10px] uppercase border-b border-red-500/10 pb-0.5">
                           Antes
                         </span>
-                        <pre className="wrap-break-word text-muted-foreground max-h-30 overflow-y-auto">
+                        {/* 🔧 break-words whitespace-pre-wrap substituem wrap-break-word (classe inválida) */}
+                        <pre className="wrap-break-words whitespace-pre-wrap text-muted-foreground max-h-30 overflow-y-auto">
                           {JSON.stringify(selectedLog.changes.before, null, 2)}
                         </pre>
                       </div>
@@ -465,7 +478,7 @@ export default function AuditPage() {
                         <span className="text-itc-sucesso font-bold block text-[10px] uppercase border-b border-emerald-500/10 pb-0.5">
                           Depois
                         </span>
-                        <pre className="wrap-break-word text-foreground max-h-30 overflow-y-auto">
+                        <pre className="wrap-break-words whitespace-pre-wrap text-foreground max-h-30 overflow-y-auto">
                           {JSON.stringify(selectedLog.changes.after, null, 2)}
                         </pre>
                       </div>

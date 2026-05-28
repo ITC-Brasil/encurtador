@@ -3,9 +3,8 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { auth, db } from "@/lib/firebase";
+import { auth } from "@/lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
-import { collection, getDocs, deleteDoc, doc } from "firebase/firestore";
 import {
   Card,
   CardContent,
@@ -26,6 +25,7 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -85,6 +85,18 @@ export default function GestaoUsuariosPage() {
   const [sortRole, setSortRole] = useState<OrderDirection>(null);
   const [sortStatus, setSortStatus] = useState<OrderDirection>(null);
 
+  // Estados para Dialog de confirmação de deleção
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [pendingDeleteUid, setPendingDeleteUid] = useState<string | null>(null);
+  const [pendingDeleteName, setPendingDeleteName] = useState<string>("");
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Estados para Dialog de confirmação de revogação
+  const [isRevokeDialogOpen, setIsRevokeDialogOpen] = useState(false);
+  const [pendingRevokeId, setPendingRevokeId] = useState<string | null>(null);
+  const [pendingRevokeEmail, setPendingRevokeEmail] = useState<string>("");
+  const [isRevoking, setIsRevoking] = useState(false);
+
   const cardHoverClass =
     "transition-all duration-300 hover:shadow-md hover:border-itc-ciano/30";
 
@@ -98,9 +110,7 @@ export default function GestaoUsuariosPage() {
 
       const res = await fetch("/api/usuarios", {
         method: "GET",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
 
       if (!res.ok) throw new Error();
@@ -113,22 +123,23 @@ export default function GestaoUsuariosPage() {
     }
   };
 
-  // Função corrigida para apontar para a coleção "invites"
-  const fetchConvites = async () => {
+  // 🔒 fetchConvites protegido via API Route com Bearer Token
+  const fetchConvites = async (
+    firebaseUser?: import("firebase/auth").User | null,
+  ) => {
     try {
-      const snap = await getDocs(collection(db, "invites"));
-      const invs: ConvitePendente[] = [];
+      const currentUser = firebaseUser ?? auth.currentUser;
+      if (!currentUser) return;
+      const token = await currentUser.getIdToken();
 
-      snap.forEach((documento) => {
-        const data = documento.data();
-        invs.push({
-          id: documento.id,
-          email: data.email,
-          role: data.role || "Colaborador",
-        });
+      const res = await fetch("/api/invites", {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` },
       });
 
-      setConvitesPendentes(invs);
+      if (!res.ok) return;
+      const data = await res.json();
+      setConvitesPendentes(data);
     } catch (error) {
       console.error("Erro ao buscar convites pendentes:", error);
     }
@@ -142,7 +153,7 @@ export default function GestaoUsuariosPage() {
       }
       setCurrentAdminEmail(user.email);
       fetchColaboradores(user);
-      fetchConvites();
+      fetchConvites(user);
     });
     return () => unsubscribe();
   }, [router]);
@@ -159,11 +170,11 @@ export default function GestaoUsuariosPage() {
     }
 
     setColaboradores((prev) =>
-      [...prev].sort((a, b) => {
-        return nextDirection === "asc"
+      [...prev].sort((a, b) =>
+        nextDirection === "asc"
           ? a.role.localeCompare(b.role)
-          : b.role.localeCompare(a.role);
-      }),
+          : b.role.localeCompare(a.role),
+      ),
     );
   };
 
@@ -254,51 +265,74 @@ export default function GestaoUsuariosPage() {
     }
   };
 
-  const handleDeletarUsuario = async (uid: string, name: string) => {
-    if (
-      !confirm(
-        `⚠️ ALERTA MÁXIMO:\nDeseja DELETAR DEFINITIVAMENTE o colaborador ${name}?\nEsta ação apagará a conta permanentemente.`,
-      )
-    )
-      return;
+  // 🔧 Abre o Dialog de confirmação em vez de window.confirm
+  const handleDeletarUsuario = (uid: string, name: string) => {
+    setPendingDeleteUid(uid);
+    setPendingDeleteName(name);
+    setIsDeleteDialogOpen(true);
+  };
 
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteUid) return;
+    setIsDeleting(true);
     try {
       const token = await auth.currentUser?.getIdToken();
 
-      const res = await fetch(`/api/usuarios?uid=${uid}`, {
+      const res = await fetch(`/api/usuarios?uid=${pendingDeleteUid}`, {
         method: "DELETE",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
+        headers: { Authorization: `Bearer ${token}` },
       });
       if (!res.ok) {
         const data = await res.json();
         throw new Error(data.error || "Falha ao deletar o colaborador.");
       }
 
-      toast.success(`Usuário ${name} excluído do sistema.`);
+      toast.success(`Usuário ${pendingDeleteName} excluído do sistema.`);
+      setIsDeleteDialogOpen(false);
       fetchColaboradores();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : "Erro na exclusão";
       toast.error(msg);
+    } finally {
+      setIsDeleting(false);
+      setPendingDeleteUid(null);
+      setPendingDeleteName("");
     }
   };
 
-  // Função de revogação corrigida para apontar para a coleção "invites"
-  const handleRevogarConvite = async (id: string, email: string) => {
-    if (
-      !confirm(
-        `Deseja revogar o convite pendente de ${email}? Ele perderá o acesso ao link enviado.`,
-      )
-    )
-      return;
+  // 🔧 Abre o Dialog de confirmação em vez de window.confirm
+  const handleRevogarConvite = (id: string, email: string) => {
+    setPendingRevokeId(id);
+    setPendingRevokeEmail(email);
+    setIsRevokeDialogOpen(true);
+  };
+
+  const handleConfirmRevoke = async () => {
+    if (!pendingRevokeId) return;
+    setIsRevoking(true);
     try {
-      await deleteDoc(doc(db, "invites", id));
-      toast.success(`Convite de ${email} revogado com sucesso.`);
+      const token = await auth.currentUser?.getIdToken();
+
+      const res = await fetch(`/api/invites?id=${pendingRevokeId}`, {
+        method: "DELETE",
+        headers: { Authorization: `Bearer ${token}` },
+      });
+
+      if (!res.ok) {
+        const data = await res.json();
+        throw new Error(data.error || "Erro ao revogar convite.");
+      }
+
+      toast.success(`Convite de ${pendingRevokeEmail} revogado com sucesso.`);
+      setIsRevokeDialogOpen(false);
       fetchConvites();
     } catch (error) {
       console.error("Erro ao revogar convite:", error);
       toast.error("Erro operacional ao tentar revogar o convite.");
+    } finally {
+      setIsRevoking(false);
+      setPendingRevokeId(null);
+      setPendingRevokeEmail("");
     }
   };
 
@@ -508,7 +542,7 @@ export default function GestaoUsuariosPage() {
         </Card>
       </div>
 
-      {/* CARD PRINCIPAL: CONVITES PENDENTES (Lendo a coleção 'invites') */}
+      {/* CARD: CONVITES PENDENTES */}
       {convitesPendentes.length > 0 && (
         <Card className={`bg-card border-border shadow-sm ${cardHoverClass}`}>
           <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6">
@@ -576,6 +610,78 @@ export default function GestaoUsuariosPage() {
           </CardContent>
         </Card>
       )}
+
+      {/* DIALOG: Confirmar Deleção de Usuário */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="border-border bg-card font-sans max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground font-bold text-base font-sans">
+              <AlertTriangle className="h-5 w-5 text-itc-erro shrink-0" />
+              Deletar Colaborador?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1 leading-relaxed">
+              Você está prestes a excluir permanentemente a conta de{" "}
+              <span className="font-semibold text-foreground">
+                {pendingDeleteName}
+              </span>
+              . Esta ação não pode ser desfeita.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0 border-t border-border pt-4 mt-2">
+            <Button
+              variant="outline"
+              disabled={isDeleting}
+              onClick={() => setIsDeleteDialogOpen(false)}
+              className="border-border text-foreground text-xs h-8"
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={isDeleting}
+              onClick={handleConfirmDelete}
+              className="bg-itc-erro hover:bg-red-700 text-white font-medium text-xs h-8"
+            >
+              {isDeleting ? "Excluindo..." : "Confirmar Exclusão"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* DIALOG: Confirmar Revogação de Convite */}
+      <Dialog open={isRevokeDialogOpen} onOpenChange={setIsRevokeDialogOpen}>
+        <DialogContent className="border-border bg-card font-sans max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground font-bold text-base font-sans">
+              <XCircle className="h-5 w-5 text-itc-erro shrink-0" />
+              Revogar Convite?
+            </DialogTitle>
+            <DialogDescription className="text-xs text-muted-foreground pt-1 leading-relaxed">
+              O convite enviado para{" "}
+              <span className="font-semibold text-foreground">
+                {pendingRevokeEmail}
+              </span>{" "}
+              será revogado e o link enviado perderá a validade imediatamente.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter className="gap-2 sm:gap-0 border-t border-border pt-4 mt-2">
+            <Button
+              variant="outline"
+              disabled={isRevoking}
+              onClick={() => setIsRevokeDialogOpen(false)}
+              className="border-border text-foreground text-xs h-8"
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={isRevoking}
+              onClick={handleConfirmRevoke}
+              className="bg-itc-erro hover:bg-red-700 text-white font-medium text-xs h-8"
+            >
+              {isRevoking ? "Revogando..." : "Confirmar Revogação"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

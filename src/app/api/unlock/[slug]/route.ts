@@ -1,17 +1,7 @@
 // src/app/api/unlock/[slug]/route.ts
 import { NextResponse } from "next/server";
-import { db } from "@/lib/firebase";
-import {
-  collection,
-  query,
-  where,
-  getDocs,
-  updateDoc,
-  doc,
-  increment,
-  getDoc,
-  setDoc,
-} from "firebase/firestore";
+import { adminDb } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 import bcrypt from "bcryptjs";
 
 export async function POST(
@@ -24,15 +14,14 @@ export async function POST(
     const { password } = body;
 
     // --- PROTEÇÃO CONTRA FORÇA BRUTA (RATE LIMITING) ---
-    // Cria uma chave única baseada no IP do usuário e no slug do link
-    const ip = request.headers.get("x-forwarded-for") || "unknown";
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0].trim() || "unknown";
     const attemptKey = `${slug}_${ip}`;
-    const attemptRef = doc(db, "passwordAttempts", attemptKey);
-    const attemptSnap = await getDoc(attemptRef);
+    const attemptRef = adminDb.collection("passwordAttempts").doc(attemptKey);
+    const attemptSnap = await attemptRef.get();
 
-    if (attemptSnap.exists()) {
-      const attemptData = attemptSnap.data();
-      // Se tiver data de bloqueio e ela for no futuro, rejeita o acesso
+    if (attemptSnap.exists) {
+      const attemptData = attemptSnap.data()!;
       if (
         attemptData.blockedUntil &&
         new Date() < attemptData.blockedUntil.toDate()
@@ -44,10 +33,9 @@ export async function POST(
       }
     }
 
-    // Busca o link no banco
-    const linksRef = collection(db, "links");
-    const q = query(linksRef, where("slug", "==", slug));
-    const snapshot = await getDocs(q);
+    // --- BUSCA O LINK VIA ADMIN SDK ---
+    const linksRef = adminDb.collection("links");
+    const snapshot = await linksRef.where("slug", "==", slug).limit(1).get();
 
     if (snapshot.empty) {
       return NextResponse.json(
@@ -63,21 +51,15 @@ export async function POST(
     const isValid = await bcrypt.compare(password, data.passwordHash);
 
     if (!isValid) {
-      // Se a senha for inválida, aumenta o contador de erros
-      const currentCount = attemptSnap.exists() ? attemptSnap.data().count : 0;
+      const currentCount = attemptSnap.exists
+        ? (attemptSnap.data()!.count ?? 0)
+        : 0;
       const newCount = currentCount + 1;
-
-      // Se errar 5 vezes seguidas (count >= 4), bloqueia por 15 minutos
       const blockedUntil =
         newCount >= 5 ? new Date(Date.now() + 15 * 60 * 1000) : null;
 
-      await setDoc(
-        attemptRef,
-        {
-          count: newCount,
-          blockedUntil,
-          updatedAt: new Date(),
-        },
+      await attemptRef.set(
+        { count: newCount, blockedUntil, updatedAt: new Date() },
         { merge: true },
       );
 
@@ -87,26 +69,19 @@ export async function POST(
       );
     }
 
-    // --- SUCESSO: LIMPA O CONTADOR DE ERROS E LIBERA O LINK ---
-    await setDoc(
-      attemptRef,
-      {
-        count: 0,
-        blockedUntil: null,
-        updatedAt: new Date(),
-      },
+    // --- SUCESSO: LIMPA O CONTADOR E REGISTRA O CLIQUE ---
+    await attemptRef.set(
+      { count: 0, blockedUntil: null, updatedAt: new Date() },
       { merge: true },
     );
 
-    await updateDoc(doc(db, "links", linkDoc.id), {
-      clickCount: increment(1),
+    // 🔧 FieldValue.increment — atômico, sem risco em cliques simultâneos
+    await linksRef.doc(linkDoc.id).update({
+      clickCount: FieldValue.increment(1),
     });
 
     return NextResponse.json(
-      {
-        success: true,
-        originalUrl: data.originalUrl,
-      },
+      { success: true, originalUrl: data.originalUrl },
       { status: 200 },
     );
   } catch (error) {

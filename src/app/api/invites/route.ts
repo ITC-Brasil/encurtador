@@ -1,13 +1,16 @@
 // src/app/api/invites/route.ts
+// ATENÇÃO: Este arquivo substitui o route.ts existente.
+// O handler POST (criar convite) foi preservado integralmente.
+// Adicionados: GET (listar convites pendentes) e DELETE (revogar convite) — ambos protegidos.
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { requireAdmin } from "@/lib/auth-guard";
 import { resend } from "@/lib/resend";
 import { randomUUID } from "crypto";
 
-export async function POST(request: Request) {
+// ── GET: Listar convites pendentes (não usados e não revogados) ──────────────
+export async function GET(request: Request) {
   try {
-    // 1. Verificar se quem está chamando é um Administrador
     const authUser = await requireAdmin(request);
     if (!authUser) {
       return NextResponse.json(
@@ -16,7 +19,91 @@ export async function POST(request: Request) {
       );
     }
 
-    // 2. Extrair e validar os dados do corpo da requisição
+    const snapshot = await adminDb
+      .collection("invites")
+      .where("usedAt", "==", null)
+      .where("isRevoked", "==", false)
+      .get();
+
+    const invites = snapshot.docs.map((doc) => ({
+      id: doc.id,
+      email: doc.data().email,
+      role: doc.data().role || "Colaborador",
+      expiresAt: doc.data().expiresAt?.toDate?.()?.toISOString() ?? null,
+    }));
+
+    return NextResponse.json(invites, { status: 200 });
+  } catch (error: unknown) {
+    console.error("🔥 ERRO NO GET /api/invites:", error);
+    return NextResponse.json(
+      { error: "Erro ao listar convites." },
+      { status: 500 },
+    );
+  }
+}
+
+// ── DELETE: Revogar convite pelo ID ─────────────────────────────────────────
+export async function DELETE(request: Request) {
+  try {
+    const authUser = await requireAdmin(request);
+    if (!authUser) {
+      return NextResponse.json(
+        { error: "Acesso não autorizado." },
+        { status: 401 },
+      );
+    }
+
+    const { searchParams } = new URL(request.url);
+    const id = searchParams.get("id");
+
+    if (!id) {
+      return NextResponse.json(
+        { error: "ID do convite é obrigatório." },
+        { status: 400 },
+      );
+    }
+
+    const inviteRef = adminDb.collection("invites").doc(id);
+    const inviteDoc = await inviteRef.get();
+
+    if (!inviteDoc.exists) {
+      return NextResponse.json(
+        { error: "Convite não encontrado." },
+        { status: 404 },
+      );
+    }
+
+    // Revogação suave — preserva o documento para auditoria
+    await inviteRef.update({
+      isRevoked: true,
+      revokedAt: new Date(),
+      revokedBy: authUser.uid,
+    });
+
+    return NextResponse.json(
+      { message: "Convite revogado com sucesso." },
+      { status: 200 },
+    );
+  } catch (error: unknown) {
+    console.error("🔥 ERRO NO DELETE /api/invites:", error);
+    return NextResponse.json(
+      { error: "Erro ao revogar convite." },
+      { status: 500 },
+    );
+  }
+}
+
+// ── POST: Criar convite (preservado integralmente) ───────────────────────────
+export async function POST(request: Request) {
+  try {
+    const authUser = await requireAdmin(request);
+    if (!authUser) {
+      return NextResponse.json(
+        { error: "Acesso não autorizado." },
+        { status: 401 },
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const email = body.email ? String(body.email).trim().toLowerCase() : "";
     const role = body.role ? String(body.role).trim() : "";
@@ -36,7 +123,6 @@ export async function POST(request: Request) {
       );
     }
 
-    // 3. Verificar se já existe um usuário ativo com esse e-mail
     const existingUser = await adminDb
       .collection("users")
       .where("email", "==", email)
@@ -51,11 +137,9 @@ export async function POST(request: Request) {
       );
     }
 
-    // 4. Gerar token único e calcular expiração (48 horas)
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
-    // 5. Salvar convite na coleção 'invites' do Firestore
     await adminDb.collection("invites").doc(token).set({
       token,
       email,
@@ -68,11 +152,9 @@ export async function POST(request: Request) {
       isRevoked: false,
     });
 
-    // 6. Montar o link de convite apontando para a nova rota de destino
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || "https://itcbr.xyz";
     const inviteLink = `${baseUrl}/invite/${token}`;
 
-    // 7. Enviar o e-mail oficial via Resend
     const { error: emailError } = await resend.emails.send({
       from: "ITC Brasil <noreply@itcbr.xyz>",
       to: email,
@@ -81,7 +163,6 @@ export async function POST(request: Request) {
     });
 
     if (emailError) {
-      // Se o e-mail falhar, remove o convite criado para evitar tokens órfãos
       await adminDb.collection("invites").doc(token).delete();
       console.error("Erro ao enviar e-mail via Resend:", emailError);
       return NextResponse.json(
@@ -90,12 +171,8 @@ export async function POST(request: Request) {
       );
     }
 
-    // 8. Retornar sucesso com o link como fallback
     return NextResponse.json(
-      {
-        message: "Convite enviado por e-mail com sucesso!",
-        inviteLink,
-      },
+      { message: "Convite enviado por e-mail com sucesso!", inviteLink },
       { status: 201 },
     );
   } catch (error: unknown) {
@@ -106,7 +183,6 @@ export async function POST(request: Request) {
   }
 }
 
-// Função auxiliar interna para renderizar o template HTML responsivo
 function buildEmailHtml({
   inviteLink,
   role,
@@ -145,8 +221,7 @@ function buildEmailHtml({
                   <table cellpadding="0" cellspacing="0" style="margin:0 auto 32px;">
                     <tr>
                       <td style="background-color:#008F95;border-radius:6px;">
-                        <a href="${inviteLink}"
-                           style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;letter-spacing:0.3px;">
+                        <a href="${inviteLink}" style="display:inline-block;padding:14px 32px;font-size:15px;font-weight:600;color:#ffffff;text-decoration:none;letter-spacing:0.3px;">
                           Aceitar Convite
                         </a>
                       </td>

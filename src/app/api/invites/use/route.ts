@@ -1,25 +1,55 @@
 // src/app/api/invites/use/route.ts
 import { NextResponse } from "next/server";
-import { adminDb } from "@/lib/firebase-admin";
+import { adminAuth, adminDb } from "@/lib/firebase-admin";
 
 export async function POST(request: Request) {
   try {
+    // 🔒 AUTENTICAÇÃO: verifica se quem está consumindo o convite é o próprio usuário autenticado
+    const authHeader = request.headers.get("Authorization");
+    const idToken = authHeader?.startsWith("Bearer ")
+      ? authHeader.split("Bearer ")[1]
+      : null;
+
+    if (!idToken) {
+      return NextResponse.json(
+        { error: "Token de autenticação ausente." },
+        { status: 401 },
+      );
+    }
+
+    let decodedToken;
+    try {
+      decodedToken = await adminAuth.verifyIdToken(idToken);
+    } catch {
+      return NextResponse.json(
+        { error: "Token de autenticação inválido ou expirado." },
+        { status: 401 },
+      );
+    }
+
     const body = await request.json().catch(() => ({}));
     const token = body.token ? String(body.token).trim() : "";
     const usedBy = body.usedBy ? String(body.usedBy).trim() : "";
 
-    // Validação estrita dos parâmetros obrigatórios
     if (!token || !usedBy) {
       return NextResponse.json(
-        { error: "Token de acesso e UID do usuário são obrigatórios." },
+        { error: "Token de convite e UID do usuário são obrigatórios." },
         { status: 400 },
+      );
+    }
+
+    // 🔒 Garante que o UID do body bate com o do token JWT
+    // Impede que alguém invalide o convite de outro usuário
+    if (decodedToken.uid !== usedBy) {
+      return NextResponse.json(
+        { error: "UID não corresponde ao usuário autenticado." },
+        { status: 403 },
       );
     }
 
     const inviteRef = adminDb.collection("invites").doc(token);
     const inviteDoc = await inviteRef.get();
 
-    // Segurança contra requisições órfãs
     if (!inviteDoc.exists) {
       return NextResponse.json(
         { error: "O convite informado não foi localizado." },
@@ -27,7 +57,15 @@ export async function POST(request: Request) {
       );
     }
 
-    // Altera os metadados do convite consumido de forma irreversível
+    // 🔧 != cobre tanto null quanto undefined — mais robusto que !== null
+    const inviteData = inviteDoc.data()!;
+    if (inviteData.usedAt != null) {
+      return NextResponse.json(
+        { error: "Este convite já foi utilizado." },
+        { status: 410 },
+      );
+    }
+
     await inviteRef.update({
       usedAt: new Date(),
       usedBy,
