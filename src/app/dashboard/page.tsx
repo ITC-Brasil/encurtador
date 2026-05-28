@@ -1,4 +1,5 @@
 // src/app/dashboard/page.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -10,10 +11,12 @@ import {
   orderBy,
   updateDoc,
   doc,
+  getDoc,
   serverTimestamp,
   onSnapshot,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import { ShieldCheck } from "lucide-react";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -52,6 +55,9 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { getCategoryBadgeStyle } from "@/lib/utils";
+import { LoadingSpinner } from "@/components/loading-spinner";
+import { StatusBadge } from "@/components/status-badge";
+import { TablePagination } from "@/components/table-pagination";
 
 // 🟢 Importações corrigidas e higienizadas do TanStack Table
 import {
@@ -72,6 +78,7 @@ interface LinkData {
   clickCount: number;
   isActive: boolean;
   createdAt: string | Date;
+  createdByName?: string | null;
 
   // Metadados de categoria desnormalizados
   categoryId?: string | null;
@@ -83,6 +90,7 @@ export default function DashboardPage() {
   "use no memo";
   const router = useRouter();
   const [loading, setLoading] = useState(true);
+  const [isAdmin, setIsAdmin] = useState(false);
 
   const [stats, setStats] = useState({
     totalLinks: 0,
@@ -102,18 +110,28 @@ export default function DashboardPage() {
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
         router.push("/login");
       } else {
-        // 🚀 CONEXÃO EM TEMPO REAL COM O FIRESTORE (onSnapshot)
+        const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+        const userRole = userDoc.data()?.role;
+        const userIsAdmin = userRole === "Administrador";
+        setIsAdmin(userIsAdmin);
+
         const linksRef = collection(db, "links");
-        const q = query(
-          linksRef,
-          where("createdBy", "==", currentUser.uid),
-          where("isDeleted", "==", false),
-          orderBy("createdAt", "desc"),
-        );
+        const q = userIsAdmin
+          ? query(
+              linksRef,
+              where("isDeleted", "==", false),
+              orderBy("createdAt", "desc"),
+            )
+          : query(
+              linksRef,
+              where("createdBy", "==", currentUser.uid),
+              where("isDeleted", "==", false),
+              orderBy("createdAt", "desc"),
+            );
 
         unsubscribeSnapshot = onSnapshot(
           q,
@@ -140,6 +158,7 @@ export default function DashboardPage() {
                 categoryId: data.categoryId || null,
                 categoryName: data.categoryName || null,
                 categoryColor: data.categoryColor || null,
+                createdByName: data.createdByName || null,
               });
             });
 
@@ -248,6 +267,12 @@ export default function DashboardPage() {
             <span className="text-xs text-muted-foreground truncate block max-w-full font-sans">
               {item.originalUrl}
             </span>
+            {isAdmin && item.createdByName && (
+              <span className="text-[10px] text-muted-foreground/60 font-sans flex items-center gap-1 mt-0.5">
+                <ShieldCheck className="h-2.5 w-2.5 shrink-0" />
+                {item.createdByName}
+              </span>
+            )}
           </div>
         );
       },
@@ -309,16 +334,8 @@ export default function DashboardPage() {
       accessorKey: "isActive",
       header: "Status",
       cell: ({ row }) => {
-        const isActive = row.getValue("isActive");
-        return isActive ? (
-          <span className="inline-flex items-center rounded-full bg-emerald-500/10 px-2 py-1 text-xs font-medium text-itc-sucesso ring-1 ring-emerald-500/20 font-sans">
-            Ativo
-          </span>
-        ) : (
-          <span className="inline-flex items-center rounded-full bg-red-500/10 px-2 py-1 text-xs font-medium text-itc-erro ring-1 ring-red-500/20 font-sans">
-            Expirado
-          </span>
-        );
+        const isActive = row.getValue("isActive") as boolean;
+        return <StatusBadge active={isActive} inactiveLabel="Expirado" />;
       },
     },
     {
@@ -358,32 +375,7 @@ export default function DashboardPage() {
   });
 
   if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center font-sans text-muted-foreground bg-background gap-2">
-        <svg
-          className="animate-spin h-4 w-4 text-itc-ciano"
-          xmlns="http://www.w3.org/2000/svg"
-          fill="none"
-          viewBox="0 0 24 24"
-        >
-          <circle
-            className="opacity-25"
-            cx="12"
-            cy="12"
-            r="10"
-            stroke="currentColor"
-            strokeWidth="4"
-          />
-          <path
-            className="opacity-75"
-            fill="currentColor"
-            fillRule="evenodd"
-            d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
-          />
-        </svg>
-        Carregando painel ITC...
-      </div>
-    );
+    return <LoadingSpinner label="Carregando painel ITC..." />;
   }
 
   const selectedCount = Object.keys(rowSelection).length;
@@ -450,7 +442,9 @@ export default function DashboardPage() {
               Links Gerenciados
             </CardTitle>
             <CardDescription className="text-muted-foreground font-sans">
-              Seus encurtadores criados.
+              {isAdmin
+                ? "Todos os links da equipe ITC Brasil."
+                : "Seus encurtadores criados."}
             </CardDescription>
           </div>
 
@@ -536,33 +530,7 @@ export default function DashboardPage() {
                 </Table>
               </div>
 
-              <div className="flex items-center justify-between px-2">
-                <div className="text-sm text-muted-foreground font-sans">
-                  {table.getFilteredSelectedRowModel().rows.length} de{" "}
-                  {table.getFilteredRowModel().rows.length} linha(s)
-                  selecionada(s).
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => table.previousPage()}
-                    disabled={!table.getCanPreviousPage()}
-                    className="font-sans border-border"
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => table.nextPage()}
-                    disabled={!table.getCanNextPage()}
-                    className="font-sans border-border"
-                  >
-                    Próximo
-                  </Button>
-                </div>
-              </div>
+              <TablePagination table={table} />
             </div>
           )}
         </CardContent>

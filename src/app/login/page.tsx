@@ -1,4 +1,5 @@
 // src/app/login/page.tsx
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -19,8 +20,7 @@ export default function LoginPage() {
   // 🧹 LIMPEZA DE SEGURANÇA: Limpa o cookie se o usuário caiu na tela de login
   // Isso evita que o Middleware cause loopings de redirecionamento
   useEffect(() => {
-    document.cookie =
-      "itc-auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Strict; Secure";
+    document.cookie = `itc-auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Strict${window.location.protocol === "https:" ? "; Secure" : ""}`;
   }, []);
 
   const handleGoogleLogin = async () => {
@@ -35,8 +35,7 @@ export default function LoginPage() {
 
       if (userDoc.exists()) {
         // Grava o cookie de autenticação ativa antes de ir para o dashboard
-        document.cookie =
-          "itc-auth=active; path=/; max-age=86400; SameSite=Strict; Secure";
+        document.cookie = `itc-auth=active; path=/; max-age=86400; SameSite=Strict${window.location.protocol === "https:" ? "; Secure" : ""}`;
 
         toast.success("Bem-vindo ao Encurtador ITC!");
         router.push("/dashboard");

@@ -1,4 +1,5 @@
 // src/app/dashboard/users/page.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -39,7 +40,6 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
-  ArrowLeft,
   UserPlus,
   Trash2,
   Play,
@@ -49,6 +49,9 @@ import {
   XCircle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { LoadingSpinner } from "@/components/loading-spinner";
+import { BackButton } from "@/components/back-button";
+import { StatusBadge } from "@/components/status-badge";
 import { InviteMemberForm } from "@/components/invite-member-form";
 
 interface Colaborador {
@@ -337,23 +340,15 @@ export default function GestaoUsuariosPage() {
   };
 
   if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center font-sans font-medium text-sm text-muted-foreground bg-background">
-        Carregando painel de segurança...
-      </div>
-    );
+    return <LoadingSpinner label="Carregando painel de segurança..." />;
   }
 
   return (
     <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-8">
       <div>
-        <Button
-          variant="ghost"
-          onClick={() => router.push("/dashboard")}
-          className="text-muted-foreground gap-2 pl-0 hover:bg-transparent font-sans text-xs w-max mb-2"
-        >
-          <ArrowLeft className="h-4 w-4" /> Voltar ao Painel
-        </Button>
+        <div className="mb-6">
+          <BackButton />
+        </div>
 
         {/* CARD PRINCIPAL: EQUIPE ATIVA */}
         <Card className={`bg-card border-border shadow-sm ${cardHoverClass}`}>
@@ -467,16 +462,13 @@ export default function GestaoUsuariosPage() {
                     </TableCell>
 
                     <TableCell className="py-4 px-6 text-center">
-                      <Badge
-                        className={`border-none text-[10px] font-bold px-2.5 h-5 font-sans ${
-                          colab.status === "Suspenso" ||
-                          colab.status === "Bloqueado"
-                            ? "bg-itc-erro/10 text-itc-erro hover:bg-itc-erro/10"
-                            : "bg-itc-sucesso/10 text-itc-sucesso hover:bg-itc-sucesso/10"
-                        }`}
-                      >
-                        {colab.status || "Ativo"}
-                      </Badge>
+                      <StatusBadge
+                        active={
+                          colab.status !== "Suspenso" &&
+                          colab.status !== "Bloqueado"
+                        }
+                        inactiveLabel={colab.status || "Suspenso"}
+                      />
                     </TableCell>
 
                     <TableCell className="py-4 px-6 text-right">

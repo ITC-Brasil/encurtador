@@ -1,4 +1,5 @@
 // src/components/new-link-form.tsx
+
 "use client";
 
 import { useState, useEffect } from "react";
@@ -173,7 +174,7 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
   return (
     <form onSubmit={handleCreateLink}>
       <div className="space-y-5 py-4">
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 items-end">
           {/* Título */}
           <div className="space-y-2">
             <label className="text-sm font-medium text-foreground">
@@ -260,7 +261,7 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
           </span>
         </h3>
 
-        <div className="grid gap-4 md:grid-cols-2">
+        <div className="grid gap-4 md:grid-cols-2 items-end">
           <div className="space-y-2">
             <label className="text-xs font-medium text-foreground font-sans flex items-center gap-1">
               <Calendar className="h-3 w-3 text-muted-foreground" /> Expira em

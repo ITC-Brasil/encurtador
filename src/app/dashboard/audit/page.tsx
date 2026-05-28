@@ -1,4 +1,5 @@
 // src/app/dashboard/audit/page.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";
@@ -36,8 +37,6 @@ import {
 import {
   ShieldCheck,
   FileText,
-  Loader2,
-  ArrowLeft,
   Eye,
   Calendar,
   User,
@@ -47,6 +46,9 @@ import {
   Edit,
 } from "lucide-react";
 import { toast } from "sonner";
+import { LoadingSpinner } from "@/components/loading-spinner";
+import { BackButton } from "@/components/back-button";
+import { TablePagination } from "@/components/table-pagination";
 
 // TanStack Table
 import {
@@ -252,26 +254,14 @@ export default function AuditPage() {
   });
 
   if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center font-sans text-xs font-medium text-muted-foreground bg-background">
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="h-5 w-5 animate-spin text-itc-ciano" />
-          <span>Carregando trilhas de auditoria imutáveis...</span>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner label="Carregando trilhas de auditoria..." />;
   }
 
   return (
     <div className="flex-1 p-8 max-w-5xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
-      {/* Botão de Voltar */}
-      <Button
-        variant="ghost"
-        onClick={() => router.push("/dashboard")}
-        className="text-muted-foreground gap-2 pl-0 hover:bg-transparent font-sans text-xs w-max mb-1"
-      >
-        <ArrowLeft className="h-4 w-4" /> Voltar ao Painel
-      </Button>
+      <div className="mb-4">
+        <BackButton />
+      </div>
 
       {/* Cabeçalho */}
       <div className="flex items-center justify-between border-b border-border/40 pb-4">
@@ -355,31 +345,8 @@ export default function AuditPage() {
               </Table>
 
               {/* Paginação */}
-              <div className="flex items-center justify-between px-6 py-3 bg-card border-t border-border/40">
-                <div className="text-xs text-muted-foreground">
-                  Página {table.getState().pagination.pageIndex + 1} de{" "}
-                  {table.getPageCount()}
-                </div>
-                <div className="flex items-center space-x-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => table.previousPage()}
-                    disabled={!table.getCanPreviousPage()}
-                    className="font-sans border-border text-xs h-8"
-                  >
-                    Anterior
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => table.nextPage()}
-                    disabled={!table.getCanNextPage()}
-                    className="font-sans border-border text-xs h-8"
-                  >
-                    Próximo
-                  </Button>
-                </div>
+              <div className="px-6 py-3 bg-card border-t border-border/40">
+                <TablePagination table={table} showPageCount />
               </div>
             </div>
           )}
@@ -464,7 +431,7 @@ export default function AuditPage() {
                       <Edit className="h-3 w-3 text-amber-500" /> Modificações
                       de Estado Detectadas
                     </span>
-                    <div className="grid grid-cols-2 gap-2 font-mono text-[11px] overflow-hidden">
+                    <div className="grid grid-cols-1 gap-2 font-mono text-[11px] overflow-hidden">
                       <div className="bg-red-500/5 border border-red-500/20 rounded p-2 space-y-1">
                         <span className="text-itc-erro font-bold block text-[10px] uppercase border-b border-red-500/10 pb-0.5">
                           Antes
