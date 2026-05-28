@@ -2,7 +2,6 @@
 "use client";
 
 import { useState, use } from "react";
-import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import {
   Card,
@@ -13,6 +12,7 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { LockKeyhole, ArrowRight } from "lucide-react";
 import { ModeToggle } from "@/components/mode-toggle";
 import { toast } from "sonner";
@@ -22,7 +22,6 @@ export default function ProtectedLinkPage({
 }: {
   params: Promise<{ slug: string }>;
 }) {
-  const router = useRouter();
   const resolvedParams = use(params);
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
@@ -37,7 +36,6 @@ export default function ProtectedLinkPage({
     setLoading(true);
 
     try {
-      // Chama a API interna de validação
       const res = await fetch(`/api/unlock/${resolvedParams.slug}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -48,11 +46,10 @@ export default function ProtectedLinkPage({
 
       if (data.success) {
         toast.success("Acesso liberado! Redirecionando...");
-        // Joga o visitante para a URL original
         window.location.href = data.originalUrl;
       } else {
         toast.error(data.error || "Senha inválida.");
-        setPassword(""); // Limpa o campo para tentar de novo
+        setPassword("");
       }
     } catch (error) {
       console.error("Erro:", error);
@@ -88,12 +85,13 @@ export default function ProtectedLinkPage({
 
           <CardContent className="space-y-4 px-8">
             <div className="space-y-2 text-left">
-              <label
+              {/* 🔧 Label shadcn/ui no lugar do <label> HTML nativo */}
+              <Label
                 htmlFor="password"
-                className="text-sm font-medium text-foreground font-sans"
+                className="text-sm font-medium font-sans"
               >
                 Senha de Acesso
-              </label>
+              </Label>
               <Input
                 id="password"
                 type="password"

@@ -1,4 +1,4 @@
-// src/components/shared/color-picker.tsx
+// src/components/color-picker.tsx
 "use client";
 
 import { useState } from "react";

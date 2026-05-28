@@ -26,10 +26,8 @@ import {
 import { Link2, ShieldCheck, Calendar, Tags } from "lucide-react";
 import { toast } from "sonner";
 import { registerLog } from "@/lib/audit";
-import { User } from "firebase/auth";
 
 interface NewLinkFormProps {
-  user: User | null;
   onSuccess: () => void;
   onCancel: () => void;
 }
