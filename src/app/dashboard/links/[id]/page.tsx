@@ -43,6 +43,7 @@ import { QRCodeSVG } from "qrcode.react";
 
 // Utilitário de auditoria imutável
 import { registerLog } from "@/lib/audit";
+import { getCategoryBadgeStyle } from "@/lib/utils";
 
 // Importações do Recharts
 import {
@@ -369,18 +370,6 @@ export default function LinkDetailsPage({
     } finally {
       setIsToggling(false);
     }
-  };
-
-  const getCategoryBadgeStyle = (hexColor: string) => {
-    const hex = hexColor.replace("#", "");
-    const r = parseInt(hex.substring(0, 2), 16);
-    const g = parseInt(hex.substring(2, 4), 16);
-    const b = parseInt(hex.substring(4, 6), 16);
-    return {
-      backgroundColor: `rgba(${r}, ${g}, ${b}, 0.12)`,
-      borderColor: `rgba(${r}, ${g}, ${b}, 0.35)`,
-      color: hexColor,
-    };
   };
 
   return (

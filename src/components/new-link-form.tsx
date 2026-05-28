@@ -10,7 +10,7 @@ import {
   collection,
   query,
   orderBy,
-  onSnapshot,
+  getDocs,
 } from "firebase/firestore";
 import bcrypt from "bcryptjs";
 import { Input } from "@/components/ui/input";
@@ -51,30 +51,24 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryId, setCategoryId] = useState<string>("none");
 
-  // 🟢 Busca as categorias em tempo real ao abrir o modal
+  // Leitura única — categorias são dados estáticos que não precisam de listener
   useEffect(() => {
-    const catRef = collection(db, "categories");
-    const q = query(catRef, orderBy("name", "asc"));
-
-    const unsubscribe = onSnapshot(
-      q,
-      (snapshot) => {
-        const catArray: Category[] = [];
-        snapshot.forEach((docSnap) => {
-          catArray.push({
-            id: docSnap.id,
-            name: docSnap.data().name,
-            color: docSnap.data().color,
-          });
-        });
+    const fetchCategories = async () => {
+      try {
+        const q = query(collection(db, "categories"), orderBy("name", "asc"));
+        const snapshot = await getDocs(q);
+        const catArray: Category[] = snapshot.docs.map((docSnap) => ({
+          id: docSnap.id,
+          name: docSnap.data().name,
+          color: docSnap.data().color,
+        }));
         setCategories(catArray);
-      },
-      (error) => {
+      } catch (error) {
         console.error("Erro ao buscar categorias:", error);
-      },
-    );
+      }
+    };
 
-    return () => unsubscribe();
+    fetchCategories();
   }, []);
 
   const generateRandomSlug = () => {

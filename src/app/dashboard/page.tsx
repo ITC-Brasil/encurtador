@@ -51,6 +51,7 @@ import {
   AlertTriangle,
 } from "lucide-react";
 import { toast } from "sonner";
+import { getCategoryBadgeStyle } from "@/lib/utils";
 
 // 🟢 Importações corrigidas e higienizadas do TanStack Table
 import {
@@ -228,18 +229,6 @@ export default function DashboardPage() {
       cell: ({ row }) => {
         const item = row.original;
 
-        const getBadgeStyle = (hexColor: string) => {
-          const hex = hexColor.replace("#", "");
-          const r = parseInt(hex.substring(0, 2), 16);
-          const g = parseInt(hex.substring(2, 4), 16);
-          const b = parseInt(hex.substring(4, 6), 16);
-          return {
-            backgroundColor: `rgba(${r}, ${g}, ${b}, 0.12)`,
-            borderColor: `rgba(${r}, ${g}, ${b}, 0.35)`,
-            color: hexColor,
-          };
-        };
-
         return (
           <div className="flex flex-col gap-1 py-0.5 max-w-70 md:max-w-100">
             <div className="flex flex-wrap items-center gap-2">
@@ -249,7 +238,7 @@ export default function DashboardPage() {
 
               {item.categoryName && item.categoryColor && (
                 <span
-                  style={getBadgeStyle(item.categoryColor)}
+                  style={getCategoryBadgeStyle(item.categoryColor)}
                   className="inline-flex items-center text-[10px] font-semibold tracking-wide px-2 py-0.5 rounded border select-none font-sans uppercase"
                 >
                   {item.categoryName}
