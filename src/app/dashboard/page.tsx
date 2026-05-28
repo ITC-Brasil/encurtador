@@ -79,6 +79,7 @@ interface LinkData {
 }
 
 export default function DashboardPage() {
+  "use no memo";
   const router = useRouter();
   const [loading, setLoading] = useState(true);
 
@@ -352,6 +353,7 @@ export default function DashboardPage() {
     },
   ];
 
+  // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: links,
     columns,

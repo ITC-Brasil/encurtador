@@ -1,25 +1,44 @@
 // src/app/api/analytics/route.ts
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
+import { FieldValue } from "firebase-admin/firestore";
 
 export async function POST(request: Request) {
   try {
+    // 🔒 AUTENTICAÇÃO: verifica segredo interno para barrar chamadas externas
+    const secret = request.headers.get("x-analytics-secret");
+    if (!secret || secret !== process.env.ANALYTICS_SECRET) {
+      return NextResponse.json({ error: "Não autorizado." }, { status: 401 });
+    }
+
     const body = await request.json().catch(() => ({}));
-    const { slug, userAgent, referrer, ip } = body;
+    const { slug, userAgent, referrer } = body;
 
     if (!slug) {
       return NextResponse.json({ error: "Slug obrigatório." }, { status: 400 });
     }
 
-    // Leitura estrita dos cabeçalhos geográficos injetados pela infraestrutura da Vercel
+    // 🔒 IP sempre lido do cabeçalho do servidor — nunca do body do cliente
+    const ip =
+      request.headers.get("x-forwarded-for")?.split(",")[0].trim() || "0.0.0.0";
+
+    // Leitura dos cabeçalhos geográficos injetados pela Vercel Edge
     const country = request.headers.get("x-vercel-ip-country") || "BR";
     const region =
       request.headers.get("x-vercel-ip-country-region") || "Desconhecido";
     const rawCity =
       request.headers.get("x-vercel-ip-city") || "Não identificada";
-    const city = decodeURIComponent(encodeURIComponent(rawCity));
 
-    // Localiza o link correspondente pelo slug para capturar o ID do documento
+    // 🔧 Decode correto: apenas decodeURIComponent — encode+decode é no-op
+    const city = (() => {
+      try {
+        return decodeURIComponent(rawCity);
+      } catch {
+        return rawCity;
+      }
+    })();
+
+    // Localiza o link pelo slug
     const linksRef = adminDb.collection("links");
     const snapshot = await linksRef.where("slug", "==", slug).limit(1).get();
 
@@ -32,28 +51,26 @@ export async function POST(request: Request) {
 
     const linkDoc = snapshot.docs[0];
     const linkId = linkDoc.id;
-    const currentClickCount = linkDoc.data().clickCount || 0;
 
     const batch = adminDb.batch();
     const newClickRef = linksRef.doc(linkId).collection("clicks").doc();
 
-    // Gravação híbrida: salva chaves antigas e novas em paralelo para evitar quebra de contrato de dados
     const timestampSnapshot = new Date();
 
     batch.set(newClickRef, {
-      timestamp: timestampSnapshot, // Mantido para compatibilidade com o layout antigo
-      clickedAt: timestampSnapshot.toISOString(), // String ISO legível para evitar quebra no Recharts
+      timestamp: timestampSnapshot,
+      clickedAt: timestampSnapshot.toISOString(),
       userAgent: userAgent || "Desconhecido",
       referrer: referrer || "Direto",
-      ip: ip || "0.0.0.0",
+      ip,
       country,
       region,
-      city, // Gravado em lowercase conforme mapeamento do Firestore
+      city,
     });
 
-    // Incrementa atomicamente o contador global de acessos
+    // 🔧 FieldValue.increment — atômico, sem risco de perda em cliques simultâneos
     batch.update(linksRef.doc(linkId), {
-      clickCount: currentClickCount + 1,
+      clickCount: FieldValue.increment(1),
     });
 
     await batch.commit();
