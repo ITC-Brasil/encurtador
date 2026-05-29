@@ -12,11 +12,18 @@ import {
   updateDoc,
   deleteDoc,
   doc,
+  getDoc,
   serverTimestamp,
 } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { useRouter } from "next/navigation";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import {
   Table,
   TableBody,
@@ -35,28 +42,18 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
-import { Tags, Plus, Loader2, ArrowLeft, Edit, Trash2 } from "lucide-react";
+import { Tags, Plus, Edit, Trash2, AlertTriangle } from "lucide-react";
 import { toast } from "sonner";
-
-// 🟢 Importação do nosso Color Picker diretamente da raiz de components
 import { ColorPicker, gerarCorSugerida } from "@/components/color-picker";
+import { LoadingSpinner } from "@/components/loading-spinner";
+import { BackButton } from "@/components/back-button";
+import { getCategoryBadgeStyle } from "@/lib/utils";
 
 interface Category {
   id: string;
   name: string;
   color: string;
   createdAt?: unknown;
-}
-
-// Função auxiliar do manual para calcular a opacidade das Badges
-function hexToRgba(hex: string, alpha: number): string {
-  // Fallback caso venha algo corrompido
-  if (!/^#[0-9A-Fa-f]{6}$/.test(hex)) return `rgba(0, 143, 149, ${alpha})`;
-
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
 }
 
 export default function TagsManagementPage() {
@@ -69,39 +66,57 @@ export default function TagsManagementPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
 
+  // Estados do Dialog de confirmação de exclusão
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
+  const [pendingDeleteName, setPendingDeleteName] = useState<string>("");
+  const [isDeleting, setIsDeleting] = useState(false);
+
   // Estado do Formulário
   const [formData, setFormData] = useState({
     name: "",
     color: "#008F95",
   });
 
+  const cardHoverClass =
+    "transition-all duration-300 hover:shadow-md hover:border-itc-ciano/30";
+
   useEffect(() => {
     let unsubscribeSnapshot: (() => void) | null = null;
 
-    const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribeAuth = onAuthStateChanged(auth, async (currentUser) => {
       if (!currentUser) {
         router.push("/login");
-      } else {
-        const catRef = collection(db, "categories");
-        const q = query(catRef, orderBy("name", "asc"));
-
-        unsubscribeSnapshot = onSnapshot(
-          q,
-          (querySnapshot) => {
-            const catArray: Category[] = [];
-            querySnapshot.forEach((doc) => {
-              catArray.push({ id: doc.id, ...doc.data() } as Category);
-            });
-            setCategories(catArray);
-            setLoading(false);
-          },
-          (error) => {
-            console.error("Erro ao escutar categorias:", error);
-            toast.error("Falha ao sincronizar as categorias.");
-            setLoading(false);
-          },
-        );
+        return;
       }
+
+      // 🔒 Verifica se o usuário é Administrador
+      const userDoc = await getDoc(doc(db, "users", currentUser.uid));
+      if (userDoc.data()?.role !== "Administrador") {
+        toast.error("Acesso restrito a administradores.");
+        router.push("/dashboard");
+        return;
+      }
+
+      const catRef = collection(db, "categories");
+      const q = query(catRef, orderBy("name", "asc"));
+
+      unsubscribeSnapshot = onSnapshot(
+        q,
+        (querySnapshot) => {
+          const catArray: Category[] = [];
+          querySnapshot.forEach((docSnap) => {
+            catArray.push({ id: docSnap.id, ...docSnap.data() } as Category);
+          });
+          setCategories(catArray);
+          setLoading(false);
+        },
+        (error) => {
+          console.error("Erro ao escutar categorias:", error);
+          toast.error("Falha ao sincronizar as categorias.");
+          setLoading(false);
+        },
+      );
     });
 
     return () => {
@@ -116,7 +131,7 @@ export default function TagsManagementPage() {
       setFormData({ name: category.name, color: category.color });
     } else {
       setEditingId(null);
-      setFormData({ name: "", color: gerarCorSugerida() }); // Cor institucional aleatória
+      setFormData({ name: "", color: gerarCorSugerida() });
     }
     setIsModalOpen(true);
   };
@@ -131,7 +146,6 @@ export default function TagsManagementPage() {
       const catRef = collection(db, "categories");
 
       if (editingId) {
-        // Atualiza categoria existente
         await updateDoc(doc(db, "categories", editingId), {
           name: formData.name.trim(),
           color: formData.color,
@@ -139,7 +153,6 @@ export default function TagsManagementPage() {
         });
         toast.success("Categoria atualizada com sucesso!");
       } else {
-        // Cria nova categoria
         await addDoc(catRef, {
           name: formData.name.trim(),
           color: formData.color,
@@ -158,144 +171,135 @@ export default function TagsManagementPage() {
     }
   };
 
-  const handleDelete = async (id: string, name: string) => {
-    if (
-      !confirm(
-        `Tem certeza que deseja excluir a categoria "${name}"? Essa ação não pode ser desfeita.`,
-      )
-    )
-      return;
+  // 🔧 Dialog de confirmação em vez de window.confirm
+  const handleDelete = (id: string, name: string) => {
+    setPendingDeleteId(id);
+    setPendingDeleteName(name);
+    setIsDeleteDialogOpen(true);
+  };
 
+  const handleConfirmDelete = async () => {
+    if (!pendingDeleteId) return;
+    setIsDeleting(true);
     try {
-      await deleteDoc(doc(db, "categories", id));
+      await deleteDoc(doc(db, "categories", pendingDeleteId));
       toast.success("Categoria excluída.");
+      setIsDeleteDialogOpen(false);
     } catch (error) {
       console.error("Erro ao excluir:", error);
       toast.error("Falha ao excluir a categoria.");
+    } finally {
+      setIsDeleting(false);
+      setPendingDeleteId(null);
+      setPendingDeleteName("");
     }
   };
 
   if (loading) {
-    return (
-      <div className="flex h-screen w-full items-center justify-center font-sans text-xs font-medium text-muted-foreground bg-background">
-        <div className="flex flex-col items-center gap-2">
-          <Loader2 className="h-5 w-5 animate-spin text-itc-ciano" />
-          <span>Carregando árvore de categorias...</span>
-        </div>
-      </div>
-    );
+    return <LoadingSpinner label="Carregando árvore de categorias..." />;
   }
 
   return (
-    <div className="flex-1 p-8 max-w-4xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
-      <Button
-        variant="ghost"
-        onClick={() => router.push("/dashboard")}
-        className="text-muted-foreground gap-2 pl-0 hover:bg-transparent font-sans text-xs w-max mb-1"
-      >
-        <ArrowLeft className="h-4 w-4" /> Voltar ao Painel
-      </Button>
-
-      <div className="flex items-center justify-between border-b border-border/40 pb-4">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <Tags className="h-6 w-6 text-itc-ciano" /> Gestão de Categorias
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            Crie e gerencie as tags corporativas para organizar os links da
-            plataforma.
-          </p>
+    <div className="flex-1 p-8 max-w-4xl mx-auto w-full font-sans transition-colors duration-300 space-y-8">
+      <div>
+        <div className="mb-6">
+          <BackButton />
         </div>
-        <Button
-          onClick={() => handleOpenModal()}
-          className="bg-itc-ciano hover:bg-itc-ciano800 text-white font-sans font-medium gap-2 shadow-sm h-9"
-        >
-          <Plus className="h-4 w-4" /> Nova Categoria
-        </Button>
-      </div>
 
-      <Card className="bg-card border-border shadow-sm overflow-hidden">
-        <CardHeader className="pb-3 pt-4 border-b border-border/40">
-          <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5">
-            Árvore de Etiquetas
-          </CardTitle>
-        </CardHeader>
-        <CardContent className="p-0">
-          {categories.length === 0 ? (
-            <div className="text-center py-10 text-xs text-muted-foreground italic">
-              Nenhuma categoria cadastrada no sistema.
+        {/* CARD PRINCIPAL */}
+        <Card className={`bg-card border-border shadow-sm ${cardHoverClass}`}>
+          <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6">
+            <div className="space-y-1">
+              <CardTitle className="text-xl font-bold text-foreground font-sans flex items-center gap-2">
+                <Tags className="h-5 w-5 text-itc-ciano" /> Gestão de Categorias
+              </CardTitle>
+              <CardDescription className="text-xs text-muted-foreground font-sans">
+                Crie e gerencie as tags corporativas para organizar os links da
+                plataforma.
+              </CardDescription>
             </div>
-          ) : (
-            <Table>
-              <TableHeader className="bg-accent/10">
-                <TableRow className="border-border hover:bg-transparent">
-                  <TableHead className="w-[40%] text-muted-foreground font-bold text-xs h-10 px-6">
-                    Nome da Categoria
-                  </TableHead>
-                  <TableHead className="w-[20%] text-muted-foreground font-bold text-xs h-10 px-6">
-                    Visualização
-                  </TableHead>
-                  <TableHead className="w-[20%] text-muted-foreground font-bold text-xs h-10 px-6">
-                    Cor (HEX)
-                  </TableHead>
-                  <TableHead className="w-[20%] text-right text-muted-foreground font-bold text-xs h-10 px-6">
-                    Ações
-                  </TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {categories.map((cat) => (
-                  <TableRow
-                    key={cat.id}
-                    className="border-border/40 hover:bg-accent/10 transition-colors h-14"
-                  >
-                    <TableCell className="px-6 font-medium text-foreground text-sm">
-                      {cat.name}
-                    </TableCell>
-                    <TableCell className="px-6">
-                      <span
-                        className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-bold border tracking-wider uppercase font-sans"
-                        style={{
-                          backgroundColor: hexToRgba(cat.color, 0.15),
-                          color: cat.color,
-                          borderColor: hexToRgba(cat.color, 0.4),
-                        }}
-                      >
-                        {cat.name}
-                      </span>
-                    </TableCell>
-                    <TableCell className="px-6">
-                      <code className="font-mono text-xs text-muted-foreground">
-                        {cat.color}
-                      </code>
-                    </TableCell>
-                    <TableCell className="px-6 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleOpenModal(cat)}
-                          className="h-8 w-8 text-muted-foreground hover:text-itc-ciano hover:bg-itc-ciano/10"
-                        >
-                          <Edit className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => handleDelete(cat.id, cat.name)}
-                          className="h-8 w-8 text-muted-foreground hover:text-itc-erro hover:bg-itc-erro/10"
-                        >
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </TableCell>
+
+            <Button
+              onClick={() => handleOpenModal()}
+              className="bg-itc-ciano hover:bg-itc-ciano800 text-white font-sans text-xs font-medium gap-2 h-9 shadow-sm"
+            >
+              <Plus className="h-4 w-4" /> Nova Categoria
+            </Button>
+          </CardHeader>
+
+          <CardContent className="p-0 border-t border-border">
+            {categories.length === 0 ? (
+              <div className="text-center py-10 text-xs text-muted-foreground italic font-sans">
+                Nenhuma categoria cadastrada no sistema.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader className="bg-muted/20">
+                  <TableRow className="border-b border-border hover:bg-transparent">
+                    <TableHead className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans w-[40%]">
+                      Nome da Categoria
+                    </TableHead>
+                    <TableHead className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans w-[20%]">
+                      Visualização
+                    </TableHead>
+                    <TableHead className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans w-[20%]">
+                      Cor (HEX)
+                    </TableHead>
+                    <TableHead className="h-11 px-6 text-[11px] font-bold uppercase tracking-wider text-muted-foreground font-sans text-right w-[20%]">
+                      Ações
+                    </TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          )}
-        </CardContent>
-      </Card>
+                </TableHeader>
+                <TableBody>
+                  {categories.map((cat) => (
+                    <TableRow
+                      key={cat.id}
+                      className="border-b border-border hover:bg-muted/30 transition-colors"
+                    >
+                      <TableCell className="py-4 px-6 font-medium text-foreground text-sm font-sans">
+                        {cat.name}
+                      </TableCell>
+                      <TableCell className="py-4 px-6">
+                        <span
+                          className="inline-flex items-center rounded-full px-2.5 py-0.5 text-[10px] font-bold border tracking-wider uppercase font-sans"
+                          style={getCategoryBadgeStyle(cat.color)}
+                        >
+                          {cat.name}
+                        </span>
+                      </TableCell>
+                      <TableCell className="py-4 px-6">
+                        <code className="font-mono text-xs text-muted-foreground">
+                          {cat.color}
+                        </code>
+                      </TableCell>
+                      <TableCell className="py-4 px-6 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleOpenModal(cat)}
+                            className="h-8 w-8 text-muted-foreground hover:text-itc-ciano hover:bg-itc-ciano/10"
+                          >
+                            <Edit className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => handleDelete(cat.id, cat.name)}
+                            className="h-8 w-8 text-muted-foreground hover:text-itc-erro hover:bg-itc-erro/10"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </CardContent>
+        </Card>
+      </div>
 
       {/* Modal de CRUD */}
       <Dialog open={isModalOpen} onOpenChange={setIsModalOpen}>
@@ -328,7 +332,6 @@ export default function TagsManagementPage() {
               />
             </div>
 
-            {/* Injeção do nosso Componente Personalizado */}
             <ColorPicker
               value={formData.color}
               onChange={(newColor) =>
@@ -337,7 +340,7 @@ export default function TagsManagementPage() {
               label="Cor de Identificação"
             />
 
-            <DialogFooter className="border-t border-border/40 pt-4 mt-2">
+            <DialogFooter className="border-t border-border/40 pt-4 mt-2 gap-2 sm:gap-2">
               <Button
                 type="button"
                 variant="outline"
@@ -356,6 +359,42 @@ export default function TagsManagementPage() {
               </Button>
             </DialogFooter>
           </form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog de confirmação de exclusão */}
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="bg-card border-border font-sans max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2 text-foreground font-bold text-base">
+              <AlertTriangle className="h-5 w-5 text-itc-erro shrink-0" />
+              Excluir Categoria?
+            </DialogTitle>
+          </DialogHeader>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            Você está prestes a excluir a categoria{" "}
+            <span className="font-semibold text-foreground">
+              &quot;{pendingDeleteName}&quot;
+            </span>
+            . Esta ação não pode ser desfeita.
+          </p>
+          <DialogFooter className="gap-2 sm:gap-2 border-t border-border pt-4 mt-2">
+            <Button
+              variant="outline"
+              disabled={isDeleting}
+              onClick={() => setIsDeleteDialogOpen(false)}
+              className="border-border text-foreground text-xs h-8"
+            >
+              Cancelar
+            </Button>
+            <Button
+              disabled={isDeleting}
+              onClick={handleConfirmDelete}
+              className="bg-itc-erro hover:bg-red-700 text-white font-medium text-xs h-8"
+            >
+              {isDeleting ? "Excluindo..." : "Confirmar Exclusão"}
+            </Button>
+          </DialogFooter>
         </DialogContent>
       </Dialog>
     </div>

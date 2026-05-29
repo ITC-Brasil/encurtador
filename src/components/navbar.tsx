@@ -1,4 +1,3 @@
-// src/components/navbar.tsx
 "use client";
 
 import { useState, useEffect } from "react";
@@ -7,7 +6,7 @@ import Link from "next/link"; // 🟢 Importado Link do Next.js para a logo
 import { usePathname, useRouter } from "next/navigation";
 import { auth } from "@/lib/firebase";
 import { onAuthStateChanged, User, signOut } from "firebase/auth";
-import { Link2, Plus, LogOut, Users, ShieldCheck } from "lucide-react"; // 🟢 ShieldCheck adicionado
+import { Link2, Plus, LogOut, Users, ShieldCheck, Tags } from "lucide-react"; // 🟢 ShieldCheck adicionado
 import { Button } from "@/components/ui/button";
 import { ModeToggle } from "@/components/mode-toggle";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
@@ -42,6 +41,7 @@ export function Navbar() {
     if (pathname === "/dashboard/audit") return "Auditoria do Sistema"; // 🟢 Título para a Auditoria
     if (pathname.includes("/links/")) return "Detalhes do Link";
     if (pathname === "/dashboard/users") return "Gestão de Usuários";
+    if (pathname === "/dashboard/tags") return "Gestão de Categorias";
     return "Painel";
   };
 
@@ -57,8 +57,7 @@ export function Navbar() {
 
     // 🔐 DESTRUIÇÃO DO COOKIE DE PRESENÇA
     // Força a expiração do cookie para o passado (1970) para bloquear o Middleware
-    document.cookie =
-      "itc-auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Strict; Secure";
+    document.cookie = `itc-auth=; path=/; expires=Thu, 01 Jan 1970 00:00:00 UTC; SameSite=Strict${window.location.protocol === "https:" ? "; Secure" : ""}`;
 
     toast.success("Sessão encerrada.");
     router.push("/login");
@@ -175,6 +174,14 @@ export function Navbar() {
               >
                 <Users className="h-4 w-4 text-muted-foreground" /> Gestão de
                 Usuários
+              </DropdownMenuItem>
+
+              <DropdownMenuItem
+                onClick={() => router.push("/dashboard/tags")}
+                className="cursor-pointer gap-2 font-medium py-2.5"
+              >
+                <Tags className="h-4 w-4 text-muted-foreground" /> Gestão de
+                Categorias
               </DropdownMenuItem>
 
               <DropdownMenuItem

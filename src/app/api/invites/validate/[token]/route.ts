@@ -1,4 +1,3 @@
-// src/app/api/invites/validate/[token]/route.ts
 import { NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 
@@ -34,7 +33,8 @@ export async function GET(
     }
 
     // 3. Token já foi consumido por um colaborador
-    if (invite.usedAt !== null) {
+    // 🔧 != cobre tanto null quanto undefined — mais robusto que !== null
+    if (invite.usedAt != null) {
       return NextResponse.json(
         {
           valid: false,
