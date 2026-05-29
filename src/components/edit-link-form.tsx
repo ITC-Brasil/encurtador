@@ -268,7 +268,7 @@ export function EditLinkForm({
           className="bg-muted text-muted-foreground cursor-not-allowed border-border font-mono text-sm"
         />
       </div>
-
+      Modificar Parâmetros do Link
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <label className="text-sm font-medium flex items-center gap-2 text-foreground">
@@ -310,7 +310,6 @@ export function EditLinkForm({
           </Select>
         </div>
       </div>
-
       <div className="space-y-2">
         <label className="text-sm font-medium flex items-center gap-2 text-foreground">
           <Link2 className="h-4 w-4 text-itc-ciano" /> Destino Original
@@ -325,7 +324,6 @@ export function EditLinkForm({
           className="border-input focus-visible:ring-itc-ciano"
         />
       </div>
-
       <div className="space-y-4 pt-4 border-t border-border mt-4">
         <div className="flex items-center space-x-2">
           <Checkbox
@@ -358,7 +356,6 @@ export function EditLinkForm({
           </div>
         )}
       </div>
-
       <div className="grid grid-cols-2 gap-3 pt-5 mt-2 border-t border-border">
         <Button
           type="button"

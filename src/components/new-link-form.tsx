@@ -24,7 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Link2, ShieldCheck, Calendar, Tags } from "lucide-react";
+import { Link2, ShieldCheck, Calendar, Tags, Type } from "lucide-react";
 import { toast } from "sonner";
 import { registerLog } from "@/lib/audit";
 
@@ -48,11 +48,9 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
   const [maxClicks, setMaxClicks] = useState("");
   const [password, setPassword] = useState("");
 
-  // 🟢 Estados das Categorias
   const [categories, setCategories] = useState<Category[]>([]);
   const [categoryId, setCategoryId] = useState<string>("none");
 
-  // Leitura única — categorias são dados estáticos que não precisam de listener
   useEffect(() => {
     const fetchCategories = async () => {
       try {
@@ -99,7 +97,6 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
 
       const hashedPassword = password ? await bcrypt.hash(password, 10) : null;
 
-      // 🟢 Encontra a categoria selecionada para desnormalizar os dados
       const selectedCategory = categories.find((c) => c.id === categoryId);
 
       const linkPayload = {
@@ -109,12 +106,9 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
         clickCount: 0,
         isActive: true,
         isDeleted: false,
-
-        // 🟢 Injeção de Metadados de Categoria
         categoryId: selectedCategory ? selectedCategory.id : null,
         categoryName: selectedCategory ? selectedCategory.name : null,
         categoryColor: selectedCategory ? selectedCategory.color : null,
-
         createdBy: currentUser?.uid || null,
         createdByName: currentUser?.displayName || "Colaborador",
         createdByEmail: currentUser?.email || "sistema@itcbr.xyz",
@@ -149,9 +143,7 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
           "❌ ERRO OPERACIONAL NO ESCOPO DE GRAVAÇÃO/AUDITORIA:",
           error,
         );
-
         const firebaseError = error as { code?: string };
-
         if (
           firebaseError?.code === "permission-denied" ||
           firebaseError?.code === "already-exists"
@@ -174,25 +166,26 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
   return (
     <form onSubmit={handleCreateLink}>
       <div className="space-y-5 py-4">
-        <div className="grid gap-4 md:grid-cols-2 items-end">
+        <div className="grid gap-4 md:grid-cols-2">
           {/* Título */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground">
-              Título / Identificação Interna
+            <label className="text-sm font-medium text-foreground flex items-center gap-2">
+              <Type className="h-4 w-4 text-itc-ciano" /> Título / Identificação
+              Interna
             </label>
             <Input
               type="text"
               placeholder="Ex: Qualifica DF"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              className="font-sans border-input bg-transparent text-foreground focus-visible:ring-itc-ciano"
+              className="font-sans border-input bg-transparent text-foreground focus-visible:ring-itc-ciano h-9"
             />
           </div>
 
-          {/* 🟢 Categoria / Tag Corporativa */}
+          {/* Categoria / Tag Corporativa */}
           <div className="space-y-2">
-            <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
-              <Tags className="h-3.5 w-3.5 text-itc-ciano" /> Tag Corporativa
+            <label className="text-sm font-medium text-foreground flex items-center gap-2">
+              <Tags className="h-4 w-4 text-itc-ciano" /> Tag Corporativa
             </label>
             <Select value={categoryId} onValueChange={setCategoryId}>
               <SelectTrigger className="border-input bg-transparent focus:ring-itc-ciano font-sans h-9">
@@ -217,8 +210,9 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">
-            URL Original (Destino Longo) *
+          <label className="text-sm font-medium text-foreground flex items-center gap-2">
+            <Link2 className="h-4 w-4 text-itc-ciano" /> URL Original (Destino
+            Longo) *
           </label>
           <Input
             type="text"
@@ -231,8 +225,9 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground">
-            Link Encurtador Customizado
+          <label className="text-sm font-medium text-foreground flex items-center gap-2">
+            <Link2 className="h-4 w-4 text-itc-ciano" /> Link Encurtador
+            Customizado
           </label>
           <div className="flex items-center rounded-md border border-input bg-accent/50 focus-within:ring-2 focus-within:ring-itc-ciano focus-within:border-transparent transition">
             <span className="pl-3 text-sm text-muted-foreground font-mono select-none">
@@ -264,7 +259,7 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
         <div className="grid gap-4 md:grid-cols-2 items-end">
           <div className="space-y-2">
             <label className="text-xs font-medium text-foreground font-sans flex items-center gap-1">
-              <Calendar className="h-3 w-3 text-muted-foreground" /> Expira em
+              <Calendar className="h-3 w-3 text-itc-ciano" /> Expira em
             </label>
             <Input
               type="datetime-local"
@@ -276,8 +271,8 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
 
           <div className="space-y-2">
             <label className="text-xs font-medium text-foreground font-sans flex items-center gap-1">
-              <Link2 className="h-3 w-3 text-muted-foreground" /> Limite Máximo
-              de Cliques
+              <Link2 className="h-3 w-3 text-itc-ciano" /> Limite Máximo de
+              Cliques
             </label>
             <Input
               type="number"
@@ -290,9 +285,9 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
         </div>
 
         <div className="space-y-2">
-          <label className="text-sm font-medium text-foreground font-sans flex items-center gap-1">
-            <ShieldCheck className="h-4 w-4 text-muted-foreground" /> Proteger
-            por Senha de Acesso
+          <label className="text-sm font-medium text-foreground font-sans flex items-center gap-2">
+            <ShieldCheck className="h-4 w-4 text-itc-ciano" /> Proteger por
+            Senha de Acesso
           </label>
           <Input
             type="password"
@@ -304,7 +299,7 @@ export function NewLinkForm({ onSuccess, onCancel }: NewLinkFormProps) {
         </div>
       </div>
 
-      <DialogFooter className="gap-2 sm:gap-0 border-t border-border pt-4">
+      <DialogFooter className="gap-2 sm:gap-3 border-t border-border pt-4 mt-2">
         <Button
           type="button"
           variant="outline"

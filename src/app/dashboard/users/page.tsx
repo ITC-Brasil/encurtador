@@ -40,6 +40,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import {
+  Users,
   UserPlus,
   Trash2,
   Play,
@@ -398,8 +399,8 @@ export default function GestaoUsuariosPage() {
         <Card className={`bg-card border-border shadow-sm ${cardHoverClass}`}>
           <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 pb-6">
             <div className="space-y-1">
-              <CardTitle className="text-xl font-bold text-foreground font-sans">
-                Equipe ITC Brasil
+              <CardTitle className="text-xl font-bold text-foreground font-sans flex items-center gap-2">
+                <Users className="h-5 w-5 text-itc-ciano" /> Equipe ITC Brasil
               </CardTitle>
               <CardDescription className="text-xs text-muted-foreground font-sans">
                 Gerencie acessos operacionais ou envie tokens de convite

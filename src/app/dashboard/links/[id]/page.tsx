@@ -378,10 +378,11 @@ export default function LinkDetailsPage({
     <div className="flex-1 p-8 max-w-6xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
       {/* BARRA SUPERIOR DE CONTEXTO */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-border/40 pb-4">
-        <div className="space-y-2">
-          <BackButton label="Voltar ao Painel Geral" />
-          <h1 className="text-xl font-bold tracking-tight text-foreground font-sans">
-            Análise do Link Encurtado
+        <div className="flex flex-col gap- items-start">
+          <BackButton />
+          <h1 className="text-xl font-bold tracking-tight text-foreground font-sans flex items-center gap-2">
+            <Link2 className="h-5 w-5 text-itc-ciano" /> Análise do Link
+            Encurtado
           </h1>
         </div>
 
@@ -807,8 +808,8 @@ export default function LinkDetailsPage({
       {/* MODAL DE EDIÇÃO */}
       <Dialog open={isEditOpen} onOpenChange={setIsEditOpen}>
         <DialogContent className="bg-card border-border max-w-md w-full">
-          <DialogTitle className="text-sm font-bold font-sans uppercase text-muted-foreground tracking-wider">
-            Modificar Parâmetros do Link
+          <DialogTitle className="text-xl font-bold text-foreground font-display flex items-center gap-2">
+            <Edit className="h-5 w-5 text-itc-ciano" /> Modificar Link Curto
           </DialogTitle>
           <div className="pt-2">
             <EditLinkForm

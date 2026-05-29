@@ -44,7 +44,6 @@ import {
 } from "@/components/ui/pagination";
 import {
   ShieldCheck,
-  FileText,
   Eye,
   Calendar,
   User,
@@ -188,29 +187,22 @@ export default function AuditPage() {
 
   return (
     <div className="flex-1 p-8 max-w-5xl mx-auto w-full font-sans transition-colors duration-300 space-y-6">
-      <div className="mb-4">
+      <div className="mb-6">
         <BackButton />
       </div>
 
-      <div className="flex items-center justify-between border-b border-border/40 pb-4">
-        <div className="space-y-1">
-          <h1 className="text-2xl font-bold tracking-tight text-foreground flex items-center gap-2">
-            <ShieldCheck className="h-6 w-6 text-itc-ciano" /> Trilha de
-            Auditoria Imutável
-          </h1>
-          <p className="text-xs text-muted-foreground">
-            Histórico simplificado de segurança e operações na infraestrutura
-            corporativa de links.
-          </p>
-        </div>
-      </div>
-
       <Card className="bg-card border-border shadow-sm overflow-hidden">
-        <CardHeader className="pb-3 pt-4 border-b border-border/40">
-          <CardTitle className="text-xs font-bold uppercase tracking-wider text-itc-ciano flex items-center gap-1.5">
-            <FileText className="h-3.5 w-3.5" /> Registros Operacionais do
-            Sistema
-          </CardTitle>
+        <CardHeader className="pb-4 pt-5">
+          <div className="flex flex-col gap-1">
+            <CardTitle className="text-xl font-bold text-foreground font-sans flex items-center gap-2">
+              <ShieldCheck className="h-5 w-5 text-itc-ciano" /> Trilha de
+              Auditoria Imutável
+            </CardTitle>
+            <p className="text-xs text-muted-foreground font-sans">
+              Histórico simplificado de segurança e operações na infraestrutura
+              corporativa de links.
+            </p>
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           {logs.length === 0 ? (
