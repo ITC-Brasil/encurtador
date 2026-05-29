@@ -1,5 +1,4 @@
 // src/app/dashboard/page.tsx
-
 "use client";
 
 import { useEffect, useState } from "react";
@@ -44,6 +43,15 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationEllipsis,
+} from "@/components/ui/pagination";
+import {
   Link2,
   MousePointerClick,
   CheckCircle,
@@ -57,18 +65,17 @@ import { toast } from "sonner";
 import { getCategoryBadgeStyle } from "@/lib/utils";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { StatusBadge } from "@/components/status-badge";
-import { TablePagination } from "@/components/table-pagination";
 
-// 🟢 Importações corrigidas e higienizadas do TanStack Table
 import {
   ColumnDef,
   flexRender,
   getCoreRowModel,
-  getPaginationRowModel,
-  getSortedRowModel, // Adicionado o import que estava faltando
+  getSortedRowModel,
   SortingState,
   useReactTable,
 } from "@tanstack/react-table";
+
+const PAGE_SIZE = 10;
 
 interface LinkData {
   id: string;
@@ -79,8 +86,6 @@ interface LinkData {
   isActive: boolean;
   createdAt: string | Date;
   createdByName?: string | null;
-
-  // Metadados de categoria desnormalizados
   categoryId?: string | null;
   categoryName?: string | null;
   categoryColor?: string | null;
@@ -91,20 +96,18 @@ export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [isAdmin, setIsAdmin] = useState(false);
-
   const [stats, setStats] = useState({
     totalLinks: 0,
     totalClicks: 0,
     activeLinks: 0,
   });
   const [links, setLinks] = useState<LinkData[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
 
-  // Estados do Data Table
+  // TanStack — apenas sorting e seleção
   const [sorting, setSorting] = useState<SortingState>([]);
   const [rowSelection, setRowSelection] = useState({});
   const [isDeleting, setIsDeleting] = useState(false);
-
-  // Estado para controlar o Modal de Deleção
   const [isConfirmDialogOpen, setIsConfirmDialogOpen] = useState(false);
 
   useEffect(() => {
@@ -142,10 +145,8 @@ export default function DashboardPage() {
 
             querySnapshot.forEach((doc) => {
               const data = doc.data();
-
               clicks += data.clickCount || 0;
               if (data.isActive) active++;
-
               linksArray.push({
                 id: doc.id,
                 slug: data.slug,
@@ -154,7 +155,6 @@ export default function DashboardPage() {
                 clickCount: data.clickCount || 0,
                 isActive: data.isActive,
                 createdAt: data.createdAt,
-
                 categoryId: data.categoryId || null,
                 categoryName: data.categoryName || null,
                 categoryColor: data.categoryColor || null,
@@ -168,6 +168,7 @@ export default function DashboardPage() {
               activeLinks: active,
             });
             setLinks(linksArray);
+            setCurrentPage(1);
             setLoading(false);
           },
           (error) => {
@@ -185,9 +186,7 @@ export default function DashboardPage() {
     };
   }, [router]);
 
-  const handleOpenDeleteDialog = () => {
-    setIsConfirmDialogOpen(true);
-  };
+  const handleOpenDeleteDialog = () => setIsConfirmDialogOpen(true);
 
   const handleConfirmDeleteSelected = async () => {
     const selectedIds = table
@@ -247,14 +246,12 @@ export default function DashboardPage() {
       header: "Identificação & Destino",
       cell: ({ row }) => {
         const item = row.original;
-
         return (
           <div className="flex flex-col gap-1 py-0.5 max-w-70 md:max-w-100">
             <div className="flex flex-wrap items-center gap-2">
               <span className="font-medium text-foreground font-sans text-sm truncate block">
                 {item.title}
               </span>
-
               {item.categoryName && item.categoryColor && (
                 <span
                   style={getCategoryBadgeStyle(item.categoryColor)}
@@ -283,7 +280,6 @@ export default function DashboardPage() {
       cell: ({ row }) => {
         const slug = row.getValue("slug") as string;
         const shortLink = `itcbr.xyz/${slug}`;
-
         return (
           <div className="flex items-center gap-2">
             <a
@@ -312,18 +308,16 @@ export default function DashboardPage() {
     },
     {
       accessorKey: "clickCount",
-      header: ({ column }) => {
-        return (
-          <Button
-            variant="ghost"
-            onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
-            className="hover:bg-accent hover:text-foreground font-semibold px-0 font-sans flex items-center gap-1"
-          >
-            Cliques
-            <ArrowUpDown className="h-4 w-4" />
-          </Button>
-        );
-      },
+      header: ({ column }) => (
+        <Button
+          variant="ghost"
+          onClick={() => column.toggleSorting(column.getIsSorted() === "asc")}
+          className="hover:bg-accent hover:text-foreground font-semibold px-0 font-sans flex items-center gap-1"
+        >
+          Cliques
+          <ArrowUpDown className="h-4 w-4" />
+        </Button>
+      ),
       cell: ({ row }) => (
         <div className="font-sans font-semibold text-foreground">
           {row.getValue("clickCount")}
@@ -359,20 +353,49 @@ export default function DashboardPage() {
     },
   ];
 
+  // TanStack gerencia apenas sorting e seleção — paginação é externa
   // eslint-disable-next-line react-hooks/incompatible-library
   const table = useReactTable({
     data: links,
     columns,
     getCoreRowModel: getCoreRowModel(),
-    getPaginationRowModel: getPaginationRowModel(),
     onSortingChange: setSorting,
     getSortedRowModel: getSortedRowModel(),
     onRowSelectionChange: setRowSelection,
-    state: {
-      sorting,
-      rowSelection,
-    },
+    state: { sorting, rowSelection },
   });
+
+  // Paginação manual sobre os dados já ordenados pelo TanStack
+  const sortedRows = table.getRowModel().rows;
+  const totalPages = Math.ceil(sortedRows.length / PAGE_SIZE);
+  const paginatedRows = sortedRows.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
+  const getPageNumbers = (): (number | "ellipsis")[] => {
+    if (totalPages <= 5)
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (currentPage <= 3) return [1, 2, 3, 4, "ellipsis", totalPages];
+    if (currentPage >= totalPages - 2)
+      return [
+        1,
+        "ellipsis",
+        totalPages - 3,
+        totalPages - 2,
+        totalPages - 1,
+        totalPages,
+      ];
+    return [
+      1,
+      "ellipsis",
+      currentPage - 1,
+      currentPage,
+      currentPage + 1,
+      "ellipsis",
+      totalPages,
+    ];
+  };
 
   if (loading) {
     return <LoadingSpinner label="Carregando painel ITC..." />;
@@ -395,7 +418,9 @@ export default function DashboardPage() {
               {stats.totalLinks}
             </div>
             <p className="text-xs text-muted-foreground mt-1 font-sans">
-              Links encurtados sob itcbr.xyz
+              {isAdmin
+                ? "Todos os links da equipe ITC Brasil."
+                : "Links encurtados sob itcbr.xyz"}
             </p>
           </CardContent>
         </Card>
@@ -447,7 +472,6 @@ export default function DashboardPage() {
                 : "Seus encurtadores criados."}
             </CardDescription>
           </div>
-
           {selectedCount > 0 && (
             <Button
               variant="destructive"
@@ -480,27 +504,25 @@ export default function DashboardPage() {
                         key={headerGroup.id}
                         className="border-border hover:bg-transparent"
                       >
-                        {headerGroup.headers.map((header) => {
-                          return (
-                            <TableHead
-                              key={header.id}
-                              className="text-muted-foreground font-semibold font-sans"
-                            >
-                              {header.isPlaceholder
-                                ? null
-                                : flexRender(
-                                    header.column.columnDef.header,
-                                    header.getContext(),
-                                  )}
-                            </TableHead>
-                          );
-                        })}
+                        {headerGroup.headers.map((header) => (
+                          <TableHead
+                            key={header.id}
+                            className="text-muted-foreground font-semibold font-sans"
+                          >
+                            {header.isPlaceholder
+                              ? null
+                              : flexRender(
+                                  header.column.columnDef.header,
+                                  header.getContext(),
+                                )}
+                          </TableHead>
+                        ))}
                       </TableRow>
                     ))}
                   </TableHeader>
                   <TableBody>
-                    {table.getRowModel().rows?.length ? (
-                      table.getRowModel().rows.map((row) => (
+                    {paginatedRows.length ? (
+                      paginatedRows.map((row) => (
                         <TableRow
                           key={row.id}
                           data-state={row.getIsSelected() && "selected"}
@@ -530,7 +552,61 @@ export default function DashboardPage() {
                 </Table>
               </div>
 
-              <TablePagination table={table} />
+              {totalPages > 1 && (
+                <div className="flex items-center justify-between px-1">
+                  <p className="text-xs text-muted-foreground font-sans">
+                    {selectedCount > 0
+                      ? `${selectedCount} selecionado(s) · `
+                      : ""}
+                    Página {currentPage} de {totalPages} — {links.length} links
+                  </p>
+                  <Pagination className="w-auto mx-0">
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() =>
+                            setCurrentPage((p) => Math.max(1, p - 1))
+                          }
+                          className={`cursor-pointer font-sans text-xs h-8 ${
+                            currentPage === 1
+                              ? "pointer-events-none opacity-40"
+                              : ""
+                          }`}
+                        />
+                      </PaginationItem>
+                      {getPageNumbers().map((page, idx) =>
+                        page === "ellipsis" ? (
+                          <PaginationItem key={`e-${idx}`}>
+                            <PaginationEllipsis />
+                          </PaginationItem>
+                        ) : (
+                          <PaginationItem key={page}>
+                            <PaginationLink
+                              onClick={() => setCurrentPage(page as number)}
+                              isActive={currentPage === page}
+                              className="cursor-pointer font-sans text-xs h-8 w-8"
+                            >
+                              {page}
+                            </PaginationLink>
+                          </PaginationItem>
+                        ),
+                      )}
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() =>
+                            setCurrentPage((p) => Math.min(totalPages, p + 1))
+                          }
+                          className={`cursor-pointer font-sans text-xs h-8 ${
+                            currentPage === totalPages
+                              ? "pointer-events-none opacity-40"
+                              : ""
+                          }`}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              )}
             </div>
           )}
         </CardContent>

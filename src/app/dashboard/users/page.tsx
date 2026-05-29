@@ -48,11 +48,22 @@ import {
   Clock,
   XCircle,
 } from "lucide-react";
+import {
+  Pagination,
+  PaginationContent,
+  PaginationItem,
+  PaginationLink,
+  PaginationNext,
+  PaginationPrevious,
+  PaginationEllipsis,
+} from "@/components/ui/pagination";
 import { toast } from "sonner";
 import { LoadingSpinner } from "@/components/loading-spinner";
 import { BackButton } from "@/components/back-button";
 import { StatusBadge } from "@/components/status-badge";
 import { InviteMemberForm } from "@/components/invite-member-form";
+
+const PAGE_SIZE = 20;
 
 interface Colaborador {
   uid: string;
@@ -76,6 +87,7 @@ export default function GestaoUsuariosPage() {
   const [loading, setLoading] = useState(true);
 
   const [colaboradores, setColaboradores] = useState<Colaborador[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [convitesPendentes, setConvitesPendentes] = useState<ConvitePendente[]>(
     [],
   );
@@ -119,6 +131,7 @@ export default function GestaoUsuariosPage() {
       if (!res.ok) throw new Error();
       const data = await res.json();
       setColaboradores(data);
+      setCurrentPage(1);
     } catch {
       toast.error("Não foi possível carregar os colaboradores.");
     } finally {
@@ -339,6 +352,37 @@ export default function GestaoUsuariosPage() {
     }
   };
 
+  // Paginação dos colaboradores
+  const totalPages = Math.ceil(colaboradores.length / PAGE_SIZE);
+  const paginatedColaboradores = colaboradores.slice(
+    (currentPage - 1) * PAGE_SIZE,
+    currentPage * PAGE_SIZE,
+  );
+
+  const getPageNumbers = (): (number | "ellipsis")[] => {
+    if (totalPages <= 5)
+      return Array.from({ length: totalPages }, (_, i) => i + 1);
+    if (currentPage <= 3) return [1, 2, 3, 4, "ellipsis", totalPages];
+    if (currentPage >= totalPages - 2)
+      return [
+        1,
+        "ellipsis",
+        totalPages - 3,
+        totalPages - 2,
+        totalPages - 1,
+        totalPages,
+      ];
+    return [
+      1,
+      "ellipsis",
+      currentPage - 1,
+      currentPage,
+      currentPage + 1,
+      "ellipsis",
+      totalPages,
+    ];
+  };
+
   if (loading) {
     return <LoadingSpinner label="Carregando painel de segurança..." />;
   }
@@ -420,7 +464,7 @@ export default function GestaoUsuariosPage() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {colaboradores.map((colab: Colaborador) => (
+                {paginatedColaboradores.map((colab: Colaborador) => (
                   <TableRow
                     key={colab.uid}
                     className="border-b border-border hover:bg-muted/30 transition-colors"
@@ -530,6 +574,62 @@ export default function GestaoUsuariosPage() {
                 )}
               </TableBody>
             </Table>
+
+            {totalPages > 1 && (
+              <div className="px-6 py-4 border-t border-border">
+                <div className="flex items-center justify-between">
+                  <p className="text-xs text-muted-foreground font-sans">
+                    Página {currentPage} de {totalPages} —{" "}
+                    {colaboradores.length} colaboradores
+                  </p>
+                  <Pagination className="w-auto mx-0">
+                    <PaginationContent>
+                      <PaginationItem>
+                        <PaginationPrevious
+                          onClick={() =>
+                            setCurrentPage((p) => Math.max(1, p - 1))
+                          }
+                          className={`cursor-pointer font-sans text-xs h-8 ${
+                            currentPage === 1
+                              ? "pointer-events-none opacity-40"
+                              : ""
+                          }`}
+                        />
+                      </PaginationItem>
+                      {getPageNumbers().map((page, idx) =>
+                        page === "ellipsis" ? (
+                          <PaginationItem key={`e-${idx}`}>
+                            <PaginationEllipsis />
+                          </PaginationItem>
+                        ) : (
+                          <PaginationItem key={page}>
+                            <PaginationLink
+                              onClick={() => setCurrentPage(page as number)}
+                              isActive={currentPage === page}
+                              className="cursor-pointer font-sans text-xs h-8 w-8"
+                            >
+                              {page}
+                            </PaginationLink>
+                          </PaginationItem>
+                        ),
+                      )}
+                      <PaginationItem>
+                        <PaginationNext
+                          onClick={() =>
+                            setCurrentPage((p) => Math.min(totalPages, p + 1))
+                          }
+                          className={`cursor-pointer font-sans text-xs h-8 ${
+                            currentPage === totalPages
+                              ? "pointer-events-none opacity-40"
+                              : ""
+                          }`}
+                        />
+                      </PaginationItem>
+                    </PaginationContent>
+                  </Pagination>
+                </div>
+              </div>
+            )}
           </CardContent>
         </Card>
       </div>
