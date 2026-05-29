@@ -119,7 +119,6 @@ export function Navbar() {
               </DialogHeader>
 
               <NewLinkForm
-                user={user}
                 onSuccess={() => {
                   setIsDialogOpen(false);
                 }}
